@@ -1,4 +1,5 @@
 export type {
+  BarPiece,
   ParamSchema,
   Params,
   SelectOption,
@@ -9,8 +10,6 @@ export type {
   SimMeta,
   SimModule,
   SimStatus,
-  StatusPiece,
-  ToolbarControl,
   UnavailableChoice,
 } from './types';
 export { createRng, type Rng } from './rng';

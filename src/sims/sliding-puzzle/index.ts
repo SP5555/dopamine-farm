@@ -6,8 +6,7 @@ import type {
   SimInstance,
   SimModule,
   SimStatus,
-  StatusPiece,
-  ToolbarControl,
+  BarPiece,
 } from '../../harness/types';
 import {
   applyMove,
@@ -380,7 +379,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     });
   }
 
-  function toolbar(): ToolbarControl[] {
+  function toolbar(): BarPiece[] {
     const slider = Math.round(speedToSlider(host.speed));
     return [
       {
@@ -429,8 +428,8 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   }
 
   function getStatus(): SimStatus {
-    const manhattan: StatusPiece = { type: 'metric', id: 'manhattan', label: 'Manhattan', value: metricValue };
-    const solvedAside = (): StatusPiece[] => [
+    const manhattan: BarPiece = { type: 'metric', id: 'manhattan', label: 'Manhattan', value: metricValue };
+    const solvedAside = (): BarPiece[] => [
       { type: 'readout', id: 'moves', label: 'moves', value: String(solution.length) },
       { type: 'readout', id: 'optimal', label: 'optimal', value: optimal ? 'yes' : 'no' },
       { type: 'readout', id: 'solver', label: 'solver', value: solverLabel() },
@@ -482,7 +481,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
 
     if (phase === 'play') {
       const left = solution.length - playIndex;
-      const row: StatusPiece[] = [
+      const row: BarPiece[] = [
         { type: 'label', id: 'phase', text: 'Playing' },
         { type: 'progress', id: 'progress', value: solution.length === 0 ? 1 : playIndex / solution.length },
       ];

@@ -6,8 +6,8 @@ import { createParamsPanel, type ParamsPanel } from './params-panel';
 import { listMetas, loadSim } from './registry';
 import { randomSeed } from './rng';
 import { buildRoute, parseRoute } from './router';
+import { createBar } from './bar';
 import { createStatusBar, statusHasBody } from './status-bar';
-import { createToolbar } from './toolbar';
 import type { ParamSchema, Params, SimHost, SimInstance, SimMeta, SimStatus } from './types';
 
 const HASH_DELAY_MS = 100;
@@ -44,12 +44,12 @@ export function createApp(root: HTMLElement): App {
         <nav class="nav" aria-label="Simulations"></nav>
       </aside>
       <section class="stage">
-        <header class="toolbar">
-          <div class="toolbar-main">
+        <header class="bar-top">
+          <div class="bar-top-main">
             <h2 class="sim-title">Dopamine Farm</h2>
-            <div class="controls"></div>
+            <div class="bar-pieces"></div>
           </div>
-          <p class="hints" hidden></p>
+          <p class="bar-hints" hidden></p>
         </header>
         <div class="viewport">
           <div class="canvas-host"></div>
@@ -57,21 +57,21 @@ export function createApp(root: HTMLElement): App {
           <div class="done-banner" hidden></div>
           <div class="empty" hidden><p>No sims yet</p></div>
         </div>
-        <footer class="status"></footer>
+        <footer class="bar-bottom"></footer>
       </section>
     </div>
   `;
 
   const navRoot = required(root, '.nav');
   const title = required(root, '.sim-title');
-  const controlsRoot = required(root, '.controls');
-  const hints = required(root, '.hints');
+  const piecesRoot = required(root, '.bar-top .bar-pieces');
+  const hints = required(root, '.bar-hints');
   const canvasHost = required(root, '.canvas-host');
   const paramsHost = required(root, '.params-host');
   const banner = required(root, '.done-banner');
   const empty = required(root, '.empty');
   const emptyText = required(empty, 'p');
-  const statusRoot = required(root, '.status');
+  const statusRoot = required(root, '.bar-bottom');
 
   const metas = listMetas();
   const metaById = new Map(metas.map((meta) => [meta.id, meta]));
@@ -91,7 +91,7 @@ export function createApp(root: HTMLElement): App {
     void mount(id, randomSeed(), {}, true);
   });
   const statusBar = createStatusBar(statusRoot, banner);
-  const toolbar = createToolbar(controlsRoot);
+  const topBar = createBar(piecesRoot);
   let autoOn = false;
 
   const loop = createLoop({
@@ -143,9 +143,10 @@ export function createApp(root: HTMLElement): App {
       pauseClock();
       clearRestart();
     }
-    syncToolbar();
+    syncToolbar(steps > 0);
     statusBar.sync(status, steps > 0);
     statusRoot.hidden = !statusHasBody(status);
+    syncHints();
     if (status.done && !runFinished) {
       runFinished = true;
       const elapsed = stopClock();
@@ -158,7 +159,8 @@ export function createApp(root: HTMLElement): App {
     if (isTypingTarget(event.target)) return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (!mounted) return;
-    toolbar.handleKey(event);
+    if (topBar.handleKey(event)) return;
+    statusBar.handleKey(event);
   };
 
   const onPopState = () => {
@@ -175,7 +177,8 @@ export function createApp(root: HTMLElement): App {
 
   if (metas.length === 0) {
     showEmpty('No sims yet');
-    toolbar.setEnabled(false);
+    topBar.setEnabled(false);
+    statusBar.setEnabled(false);
     document.title = 'Dopamine Farm';
   } else {
     const route = parseRoute(location.hash.startsWith('#/') ? location.hash : `${location.pathname}${location.search}`);
@@ -211,7 +214,8 @@ export function createApp(root: HTMLElement): App {
     empty.hidden = true;
     seed = nextSeed >>> 0;
     setChrome(meta, true);
-    toolbar.setEnabled(false);
+    topBar.setEnabled(false);
+    statusBar.setEnabled(false);
 
     let sim;
     try {
@@ -289,7 +293,9 @@ export function createApp(root: HTMLElement): App {
       onWindowResize: resize,
     };
     applyShell(chrome);
-    toolbar.setEnabled(true);
+    topBar.setEnabled(true);
+    statusBar.setEnabled(true);
+    topBar.clear();
     statusBar.clear();
     autoOn = false;
     wantPlay = play;
@@ -297,10 +303,11 @@ export function createApp(root: HTMLElement): App {
     restartClock();
     loop.restartTiming();
     loop.start();
-    syncToolbar();
+    syncToolbar(false);
     const opened = instance.getStatus();
     statusBar.sync(opened, false);
     statusRoot.hidden = !statusHasBody(opened);
+    syncHints();
     writeHash();
   }
 
@@ -320,6 +327,7 @@ export function createApp(root: HTMLElement): App {
   function restartRun(): void {
     if (!mounted) return;
     clearRestart();
+    topBar.clear();
     statusBar.clear();
     seed = randomSeed();
     mounted.instance.reset(mounted.params, seed);
@@ -331,10 +339,11 @@ export function createApp(root: HTMLElement): App {
     // Paint in this turn. Otherwise a solved board stays on screen until the
     // next frame, which reads as a click that did nothing.
     mounted.instance.render(0);
-    syncToolbar();
+    syncToolbar(true);
     const restarted = mounted.instance.getStatus();
     statusBar.sync(restarted, true);
     statusRoot.hidden = !statusHasBody(restarted);
+    syncHints();
     loop.start();
   }
 
@@ -350,13 +359,16 @@ export function createApp(root: HTMLElement): App {
     }
   }
 
-  function syncToolbar(): void {
+  function syncToolbar(stepped: boolean): void {
     const bar = mounted?.instance.toolbar?.() ?? [];
-    toolbar.sync(bar);
-    const hint = toolbar.hint();
+    topBar.sync(bar, stepped);
+    piecesRoot.hidden = bar.length === 0;
+  }
+
+  function syncHints(): void {
+    const hint = [topBar.hint(), statusBar.hint()].filter((line) => line.length > 0).join(' · ');
     hints.textContent = hint;
     hints.hidden = hint.length === 0;
-    controlsRoot.hidden = bar.length === 0;
   }
 
   function applyShell(chrome: ResolvedChrome): void {
@@ -368,7 +380,8 @@ export function createApp(root: HTMLElement): App {
     title.textContent = meta.title;
     document.title = `${meta.title} — Dopamine Farm`;
     nav.setActive(meta.id);
-    toolbar.setEnabled(enabled);
+    topBar.setEnabled(enabled);
+    statusBar.setEnabled(enabled);
   }
 
   function showEmpty(text: string): void {
@@ -379,8 +392,8 @@ export function createApp(root: HTMLElement): App {
       nav.setActive(null);
       paramsHost.hidden = true;
       canvasHost.classList.add('is-full');
-      toolbar.sync([]);
-      controlsRoot.hidden = true;
+      topBar.sync([]);
+      piecesRoot.hidden = true;
       hints.hidden = true;
       statusRoot.hidden = true;
       banner.hidden = true;

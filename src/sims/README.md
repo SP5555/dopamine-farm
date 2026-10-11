@@ -51,10 +51,12 @@ export const sim: SimModule = {
       getStatus() {
         const done = radius >= target;
         return {
-          phase: done ? 'Filled' : 'Growing',
-          progress: target === 0 ? 1 : radius / target,
           done,
-          metric: { label: 'Radius', value: radius },
+          row: [
+            { type: 'label', id: 'phase', text: done ? 'Filled' : 'Growing' },
+            { type: 'progress', id: 'progress', value: target === 0 ? 1 : radius / target },
+            { type: 'metric', id: 'radius', label: 'Radius', value: radius },
+          ],
         };
       },
       dispose() {},
@@ -72,14 +74,16 @@ Import from `src/harness/author.ts`.
 | Export | Use |
 | --- | --- |
 | `SimModule`, `SimMeta`, `SimContext`, `SimStatus`, `SimInstance` | The types for `meta` and `sim`. |
-| `SimHost`, `ToolbarControl`, `StatusPiece` | The toolbar controls and the footer pieces. |
+| `SimHost`, `BarPiece` | The host, and a piece either bar can show. |
 | `ParamSchema`, `Params`, `SelectOption`, `UnavailableChoice` | Param definitions, when you want them named. |
 | `SimChrome` | Hides Config. |
 | `createRng` | A seeded random stream. `reset` receives the seed. |
 
-## Toolbar
+## Bars
 
-`toolbar()` returns the controls for this sim, in order. An empty list, or no method, leaves the toolbar blank. Each control handles its own click, input, or change. `shortcut` puts a key on that control and adds it to the hint line.
+The same pieces go in either bar. `toolbar()` fills the top bar. `getStatus()` fills the footer, and also reports the run. An empty list, or no `toolbar`, leaves that bar blank.
+
+A piece is a `button`, `slider`, `select`, `label`, `progress`, `readout`, or `metric`. A button, slider, or dropdown handles its own click or change. The others are only display. `progress` uses `null` for the indeterminate bar. A `metric` is a number plus a sparkline.
 
 ```ts
 toolbar: () => [
@@ -90,6 +94,7 @@ toolbar: () => [
     shortcut: { key: ' ', hint: 'Space play/pause' },
     onClick: () => host.togglePaused(),
   },
+  { type: 'readout', id: 'radius', label: 'Radius', value: String(radius) },
   {
     type: 'slider',
     id: 'speed',
@@ -101,39 +106,32 @@ toolbar: () => [
     text: '40',
     onChange: (value) => host.setSpeed(value),
   },
-  {
-    type: 'select',
-    id: 'mode',
-    label: 'Mode',
-    value: 'slow',
-    options: [
-      { value: 'slow', label: 'Slow' },
-      { value: 'fast', label: 'Fast' },
-    ],
-    onChange: (value) => {
-      mode = value;
-    },
-  },
 ],
 ```
-
-`host` is the second argument of `create`. It can pause, step, restart, set the speed, and turn auto-restart on. A sim that never calls those leaves them unused.
-
-A button may set `pressed: true`. Add `toggle: true` for the highlighted pressed style. A shortcut may set `repeat: true` so holding the key keeps firing.
-
-## Status
-
-`getStatus()` describes the footer. `row` is the left side, `aside` is the right side, `note` is the line underneath, and `banner` is the title of the done banner. Leave a list out and that part stays blank. `done` and `computing` are how the run is driven. They are not widgets.
 
 ```ts
 row: [
   { type: 'label', id: 'phase', text: 'Growing' },
-  { type: 'progress', id: 'progress', value: 0.4 }, // null is the indeterminate bar
-  { type: 'readout', id: 'left', label: 'left', value: '12s' },
-  { type: 'metric', id: 'radius', label: 'Radius', value: 3 }, // number plus a sparkline
+  { type: 'progress', id: 'progress', value: 0.4 },
+  {
+    type: 'button',
+    id: 'nudge',
+    label: 'Nudge',
+    onClick: () => {
+      radius += 1;
+    },
+  },
 ],
-aside: [{ type: 'readout', id: 'rings', label: 'rings', value: '4' }],
+aside: [{ type: 'metric', id: 'radius', label: 'Radius', value: radius }],
 ```
+
+`row` is the left side of the footer and `aside` is the right side. `note` is the line underneath. `banner` is the title of the done banner. Leave a list out and that part stays blank.
+
+`done` and `computing` ride along on `getStatus()`. They drive the run. They are not pieces, and the top bar does not have them.
+
+`host` is the second argument of `create`. It can pause, step, restart, set the speed, and turn auto-restart on. A sim that never calls those leaves them unused.
+
+A button may set `pressed: true`. Add `toggle: true` for the highlighted pressed style. `shortcut` adds a key and a hint. The hint line joins every shortcut from both bars. `repeat: true` keeps firing while the key is held.
 
 ## Shell slots
 

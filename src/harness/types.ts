@@ -11,7 +11,7 @@ export interface SimChrome {
   params?: boolean;
 }
 
-export interface ToolbarShortcut {
+export interface BarShortcut {
   /** `KeyboardEvent.key`, compared case-insensitively except for space. */
   key: string;
   /** Shown in the hint line, such as `Space play/pause`. */
@@ -20,12 +20,13 @@ export interface ToolbarShortcut {
   repeat?: boolean;
 }
 
-export type ToolbarControl =
+/** A piece either bar can show. Buttons, sliders, and dropdowns carry their own handlers. */
+export type BarPiece =
   | {
       type: 'button';
       id: string;
       label: string;
-      shortcut?: ToolbarShortcut;
+      shortcut?: BarShortcut;
       /** Draws the pressed style. Omit it for a plain button. */
       pressed?: boolean;
       /** Use the pressed highlight. Plain buttons leave this off. */
@@ -52,9 +53,7 @@ export type ToolbarControl =
       value: string;
       options: { value: string; label: string }[];
       onChange: (value: string) => void;
-    };
-
-export type StatusPiece =
+    }
   | { type: 'label'; id: string; text: string }
   | { type: 'progress'; id: string; value: number | null }
   | { type: 'readout'; id: string; label: string; value: string }
@@ -138,10 +137,10 @@ export interface SimStatus {
   done: boolean;
   /** This step is work, not a frame. The shell runs a short burst and skips the slide. */
   computing?: boolean;
-  /** Left side of the footer, in order. */
-  row?: StatusPiece[];
-  /** Right side of the footer, in order. */
-  aside?: StatusPiece[];
+  /** Left side of the footer, in order. Any bar piece. */
+  row?: BarPiece[];
+  /** Right side of the footer, in order. Any bar piece. */
+  aside?: BarPiece[];
   note?: string;
   /** Done banner title. The shell adds the elapsed time. */
   banner?: string;
@@ -152,8 +151,8 @@ export interface SimInstance<P extends Params = Params> {
   step(): void;
   render(alpha: number): void;
   getStatus(): SimStatus;
-  /** Controls for the toolbar. Empty, or omitted, leaves the toolbar blank. */
-  toolbar?(): ToolbarControl[];
+  /** Pieces for the top bar. Empty, or omitted, leaves that bar blank. */
+  toolbar?(): BarPiece[];
   setParams?(changed: Partial<P>, all: P): void;
   resize?(width: number, height: number, dpr: number): void;
   dispose(): void;

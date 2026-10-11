@@ -1,30 +1,21 @@
 # Dopamine Farm
 
-A gallery of idle simulations. The app is the shell: adding a simulation is a new folder, not a change to that shell.
-
-## Run
+Simulations you start, then watch. Pick one from the list and let it run until it settles.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Other scripts:
+Open the address Vite prints.
 
-- `npm run build` typechecks and builds
-- `npm run preview` serves the production build
-- `npm test` runs the unit tests once
-- `npm run test:watch` keeps Vitest open
-- `npm run typecheck`
+The address of a run can be copied. Refreshing it plays that same run again.
 
-There is no backend. The page does not fetch assets, fonts, or data at runtime.
+## Scripts
 
-## Watch
+- `npm run build` typechecks and builds for production
+- `npm run preview` serves that build
+- `npm test` runs the unit tests
+- `npm run typecheck` typechecks without building
 
-Open a simulation at `/{id}`. Once a run exists, the address keeps `seed` and any setting that differs from that simulation's defaults, so a refresh repeats the run. Viewer state stays on this machine. It is not part of the address.
-
-Keyboard shortcuts are the ones that simulation declares. They are ignored while a field is focused.
-
-## Add a simulation
-
-A simulation is a new folder. The shell does not change. [How to add one](src/sims/README.md) covers the two files, what a sim can import, and how it declares its own controls and footer.
+Adding another simulation is described in [src/sims/README.md](src/sims/README.md).
