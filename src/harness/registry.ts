@@ -17,10 +17,17 @@ const simLoaders = import.meta.glob('../sims/*/index.ts') as Record<
   () => Promise<SimFile>
 >;
 
+export function compareMetas(a: SimMeta, b: SimMeta): number {
+  const orderA = a.order ?? Number.POSITIVE_INFINITY;
+  const orderB = b.order ?? Number.POSITIVE_INFINITY;
+  if (orderA !== orderB) return orderA - orderB;
+  return a.title.localeCompare(b.title);
+}
+
 export function listMetas(): SimMeta[] {
   return Object.values(metaModules)
     .map((module) => module.meta)
-    .sort((a, b) => a.title.localeCompare(b.title));
+    .sort(compareMetas);
 }
 
 export async function loadSim(id: string): Promise<SimModule> {

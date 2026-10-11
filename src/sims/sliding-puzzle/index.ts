@@ -162,7 +162,6 @@ interface PuzzleParams {
 type Phase = 'scramble' | 'search' | 'play' | 'solved';
 
 function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
-  host.setSpeed(SPEED_DEFAULT);
   let width = ctx.width;
   let height = ctx.height;
   let dpr = ctx.dpr;
@@ -380,51 +379,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   }
 
   function toolbar(): BarPiece[] {
-    const slider = Math.round(speedToSlider(host.speed));
-    return [
-      {
-        type: 'button',
-        id: 'play',
-        label: host.paused ? 'Play' : 'Pause',
-        pressed: !host.paused,
-        shortcut: { key: ' ', hint: 'Space play/pause' },
-        onClick: () => host.togglePaused(),
-      },
-      {
-        type: 'button',
-        id: 'step',
-        label: 'Step',
-        shortcut: { key: 'ArrowRight', hint: '→ step', repeat: true },
-        onClick: () => host.step(),
-      },
-      {
-        type: 'button',
-        id: 'restart',
-        label: 'Restart',
-        shortcut: { key: 'r', hint: 'R restart' },
-        onClick: () => host.restart(),
-      },
-      {
-        type: 'slider',
-        id: 'speed',
-        label: 'Speed',
-        min: 0,
-        max: 1000,
-        step: 1,
-        value: slider,
-        text: formatSpeed(host.speed),
-        onChange: (value) => host.setSpeed(sliderToSpeed(value)),
-      },
-      {
-        type: 'button',
-        id: 'auto',
-        label: 'Auto restart',
-        pressed: host.autoRestart,
-        toggle: true,
-        shortcut: { key: 'a', hint: 'A auto-restart' },
-        onClick: () => host.setAutoRestart(!host.autoRestart),
-      },
-    ];
+    return host.transport();
   }
 
   function getStatus(): SimStatus {
@@ -573,27 +528,6 @@ function numberParam(value: Params[string] | undefined, fallback: number): numbe
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-const SPEED_MIN = 0.5;
-const SPEED_MAX = 240;
-const SPEED_DEFAULT = 8;
-
-function sliderToSpeed(slider: number): number {
-  const logMin = Math.log(SPEED_MIN);
-  const logMax = Math.log(SPEED_MAX);
-  return Math.exp(logMin + (slider / 1000) * (logMax - logMin));
-}
-
-function speedToSlider(speed: number): number {
-  const logMin = Math.log(SPEED_MIN);
-  const logMax = Math.log(SPEED_MAX);
-  return ((Math.log(speed) - logMin) / (logMax - logMin)) * 1000;
-}
-
-function formatSpeed(speed: number): string {
-  const text = speed < 10 ? speed.toFixed(1) : String(Math.round(speed));
-  return `${text}/s`;
 }
 
 function formatRemaining(seconds: number): string {

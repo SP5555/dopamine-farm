@@ -65,7 +65,9 @@ export const sim: SimModule = {
 };
 ```
 
-`reset(params, seed)` starts a run. `step` advances one unit. `render(alpha)` draws the frame, with `alpha` from 0 up to 1 as the unit in progress. `getStatus` reports where the run is. `dispose` drops timers, listeners, and GL resources. Each visit gets a new canvas.
+`reset(params, seed)` starts a run. It must return quickly. `step` advances one unit. `render(alpha)` draws the frame, with `alpha` from 0 up to 1 as the unit in progress. `getStatus` reports where the run is. `dispose` drops timers, listeners, and GL resources. Each visit gets a new canvas.
+
+`order` on `meta` is the nav position. Lower comes first, and the first sim is what opens when the address has no id. Leave it off and the sim sorts after every numbered one, then by title.
 
 ## Imports
 
@@ -129,9 +131,23 @@ aside: [{ type: 'metric', id: 'radius', label: 'Radius', value: radius }],
 
 `done` and `computing` ride along on `getStatus()`. They drive the run. They are not pieces, and the top bar does not have them.
 
-`host` is the second argument of `create`. It can pause, step, restart, set the speed, and turn auto-restart on. A sim that never calls those leaves them unused.
+`host` is the second argument of `create`. It can pause, step, replay the current seed, roll a new run, set the speed, and turn auto-restart on. `host.transport()` is the shared play, step, replay, restart, speed, and auto-restart pieces. Spread it into `toolbar()` and add your own:
+
+```ts
+toolbar: () => [...host.transport(), { type: 'readout', id: 'radius', label: 'Radius', value: String(radius) }],
+```
+
+A sim that never calls those leaves them unused. Omitting `toolbar()` still leaves the top bar empty. The shell shows the seed there either way. The speed slider maps 0–1000 onto 0.5–240 steps per second, and a fresh page starts at 8. Switching to another sim starts at 8 again. Replay and Restart keep the speed set for this one.
 
 A button may set `pressed: true`. Add `toggle: true` for the highlighted pressed style. `shortcut` adds a key and a hint. The hint line joins every shortcut from both bars. `repeat: true` keeps firing while the key is held.
+
+## Long runs
+
+One visible event per `step`. Hold that event as pending and draw it with `alpha`, from 0 up to 1, until `step` commits it. The pulse sample above does this for the next ring: the committed radius plus `alpha` is what is on screen.
+
+Set `computing` while the step has nothing to draw yet, such as a search between two visible events. The shell then runs a burst of about 12ms, at most 500 steps, and draws with `alpha` 0. The search does not freeze the page, and it does not play an empty slide.
+
+`reset` must return in a few milliseconds. Mount calls it before the loop starts, and a restart paints `render(0)` in the same turn so the old frame does not linger. A loading bar for slow setup is a later phase: `computing: true`, a `progress` piece, and `step` advances it. Work left inside `reset` cannot show that bar, because the bar paints only after `reset` returns.
 
 ## Shell slots
 

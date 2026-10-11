@@ -1,5 +1,5 @@
 import { resolveChrome, type ResolvedChrome } from './chrome';
-import { createLoop } from './loop';
+import { createLoop, DEFAULT_SPEED } from './loop';
 import { createNav } from './nav';
 import { applyQuery } from './params';
 import { createParamsPanel, type ParamsPanel } from './params-panel';
@@ -8,6 +8,7 @@ import { randomSeed } from './rng';
 import { buildRoute, parseRoute } from './router';
 import { createBar } from './bar';
 import { createStatusBar, statusHasBody } from './status-bar';
+import { transportPieces } from './transport';
 import type { ParamSchema, Params, SimHost, SimInstance, SimMeta, SimStatus } from './types';
 
 const HASH_DELAY_MS = 100;
@@ -48,6 +49,7 @@ export function createApp(root: HTMLElement): App {
           <div class="bar-top-main">
             <h2 class="sim-title">Dopamine Farm</h2>
             <div class="bar-pieces"></div>
+            <span class="bar-seed" hidden></span>
           </div>
           <p class="bar-hints" hidden></p>
         </header>
@@ -65,6 +67,7 @@ export function createApp(root: HTMLElement): App {
   const navRoot = required(root, '.nav');
   const title = required(root, '.sim-title');
   const piecesRoot = required(root, '.bar-top .bar-pieces');
+  const seedReadout = required(root, '.bar-seed');
   const hints = required(root, '.bar-hints');
   const canvasHost = required(root, '.canvas-host');
   const paramsHost = required(root, '.params-host');
@@ -115,6 +118,9 @@ export function createApp(root: HTMLElement): App {
     get autoRestart() {
       return autoOn;
     },
+    get seed() {
+      return seed;
+    },
     setPaused(paused) {
       setPlaying(!paused);
     },
@@ -127,6 +133,9 @@ export function createApp(root: HTMLElement): App {
     restart() {
       restartRun();
     },
+    replay() {
+      replayRun();
+    },
     setSpeed(speed) {
       loop.setSpeed(speed);
     },
@@ -134,6 +143,9 @@ export function createApp(root: HTMLElement): App {
       autoOn = on;
       if (on) armRestart();
       else clearRestart();
+    },
+    transport() {
+      return transportPieces(host);
     },
   };
   loop.onFrame(({ steps, status }) => {
@@ -209,6 +221,8 @@ export function createApp(root: HTMLElement): App {
     const token = ++mountToken;
     const meta = metaById.get(id);
     if (!meta) return;
+    const previousId = mounted?.id ?? null;
+    if (previousId !== null && previousId !== id) loop.setSpeed(DEFAULT_SPEED);
     unmountSim();
     showEmpty('');
     empty.hidden = true;
@@ -308,6 +322,7 @@ export function createApp(root: HTMLElement): App {
     statusBar.sync(opened, false);
     statusRoot.hidden = !statusHasBody(opened);
     syncHints();
+    syncSeed();
     writeHash();
   }
 
@@ -325,11 +340,19 @@ export function createApp(root: HTMLElement): App {
   }
 
   function restartRun(): void {
+    beginRun(randomSeed());
+  }
+
+  function replayRun(): void {
+    beginRun(seed);
+  }
+
+  function beginRun(nextSeed: number): void {
     if (!mounted) return;
     clearRestart();
     topBar.clear();
     statusBar.clear();
-    seed = randomSeed();
+    seed = nextSeed >>> 0;
     mounted.instance.reset(mounted.params, seed);
     writeHash();
     wantPlay = true;
@@ -344,6 +367,7 @@ export function createApp(root: HTMLElement): App {
     statusBar.sync(restarted, true);
     statusRoot.hidden = !statusHasBody(restarted);
     syncHints();
+    syncSeed();
     loop.start();
   }
 
@@ -371,6 +395,11 @@ export function createApp(root: HTMLElement): App {
     hints.hidden = hint.length === 0;
   }
 
+  function syncSeed(): void {
+    seedReadout.hidden = mounted === null;
+    seedReadout.textContent = mounted ? `seed ${seed}` : '';
+  }
+
   function applyShell(chrome: ResolvedChrome): void {
     paramsHost.hidden = !chrome.params;
     canvasHost.classList.toggle('is-full', !chrome.params);
@@ -395,6 +424,7 @@ export function createApp(root: HTMLElement): App {
       topBar.sync([]);
       piecesRoot.hidden = true;
       hints.hidden = true;
+      seedReadout.hidden = true;
       statusRoot.hidden = true;
       banner.hidden = true;
     }

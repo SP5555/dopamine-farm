@@ -13,6 +13,7 @@ export interface FrameInfo {
 
 const MAX_STEPS = 500;
 const FRAME_BUDGET_MS = 12;
+export const DEFAULT_SPEED = 8;
 
 export interface Loop {
   start(): void;
@@ -31,7 +32,7 @@ export function createLoop(hooks: LoopHooks): Loop {
   let running = false;
   let paused = false;
   let coast = false;
-  let speed = 8;
+  let speed = DEFAULT_SPEED;
   let accumulator = 0;
   let last = 0;
   let pendingSteps = 0;

@@ -9,7 +9,7 @@ npm run dev
 
 Open the address Vite prints.
 
-The address of a run can be copied. Refreshing it plays that same run again.
+The address of a run can be copied. Refreshing it plays that same run again. The seed is shown in the top bar.
 
 ## Scripts
 
@@ -18,4 +18,4 @@ The address of a run can be copied. Refreshing it plays that same run again.
 - `npm test` runs the unit tests
 - `npm run typecheck` typechecks without building
 
-Adding another simulation is described in [src/sims/README.md](src/sims/README.md).
+Adding another simulation is described in [src/sims/README.md](src/sims/README.md). A run that searches or builds for a while is covered under [Long runs](src/sims/README.md#long-runs).

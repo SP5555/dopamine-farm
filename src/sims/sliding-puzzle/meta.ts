@@ -5,4 +5,5 @@ export const meta: SimMeta = {
   title: 'Sliding Puzzle',
   description: 'Scrambles, searches, then slides itself home.',
   tags: ['puzzle'],
+  order: 0,
 };
