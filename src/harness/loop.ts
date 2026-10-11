@@ -15,6 +15,13 @@ const MAX_STEPS = 500;
 const FRAME_BUDGET_MS = 12;
 export const DEFAULT_SPEED = 8;
 
+/** Fraction of a step the event on screen occupies. Omitted or out of range is a full step. */
+function eventSpan(status: SimStatus): number {
+  const span = status.span;
+  if (typeof span !== 'number' || !(span > 0) || span > 1) return 1;
+  return span;
+}
+
 export interface Loop {
   start(): void;
   stop(): void;
@@ -78,18 +85,20 @@ export function createLoop(hooks: LoopHooks): Loop {
         snap = true;
         if (pendingSteps === 0) paused = true;
       } else {
+        let span = eventSpan(begin);
         accumulator += dt * speed;
-        while (accumulator >= 1 && pendingSteps > 0 && steps < MAX_STEPS) {
+        while (accumulator >= span && pendingSteps > 0 && steps < MAX_STEPS) {
           hooks.step();
           steps += 1;
           pendingSteps -= 1;
-          accumulator -= 1;
+          accumulator -= span;
           const mid = hooks.getStatus();
           if (mid.done || mid.computing === true) {
             pendingSteps = 0;
             accumulator = 0;
             break;
           }
+          span = eventSpan(mid);
         }
         if (pendingSteps === 0) {
           paused = true;
@@ -104,8 +113,9 @@ export function createLoop(hooks: LoopHooks): Loop {
         coast = false;
         snap = true;
       } else {
+        const span = eventSpan(begin);
         accumulator += dt * speed;
-        if (accumulator >= 1) {
+        if (accumulator >= span) {
           hooks.step();
           steps = 1;
           accumulator = 0;
@@ -118,10 +128,11 @@ export function createLoop(hooks: LoopHooks): Loop {
       steps = burst();
       snap = true;
     } else if (!paused && !begin.done) {
+      let span = eventSpan(begin);
       accumulator += dt * speed;
-      while (accumulator >= 1 && steps < MAX_STEPS) {
+      while (accumulator >= span && steps < MAX_STEPS) {
         hooks.step();
-        accumulator -= 1;
+        accumulator -= span;
         steps += 1;
         const mid = hooks.getStatus();
         if (mid.done) {
@@ -134,13 +145,14 @@ export function createLoop(hooks: LoopHooks): Loop {
           snap = true;
           break;
         }
+        span = eventSpan(mid);
       }
     } else {
       snap = true;
     }
 
     const status = hooks.getStatus();
-    const alpha = snap || status.done ? 0 : accumulator - Math.floor(accumulator);
+    const alpha = snap || status.done ? 0 : Math.min(1, accumulator / eventSpan(status));
     hooks.render(alpha);
     for (const listener of listeners) listener({ steps, status });
   };

@@ -156,6 +156,12 @@ export interface SimStatus {
    * then draws with `alpha` 0 so the search does not play a slide.
    */
   computing?: boolean;
+  /**
+   * Length of the event on screen, as a fraction of one step. Omitted means 1.
+   * `alpha` still runs from 0 to 1 across that fraction, and the next event
+   * starts when it ends. Ignored while `computing` is set.
+   */
+  span?: number;
   /** Left side of the footer, in order. Any bar piece. */
   row?: BarPiece[];
   /** Right side of the footer, in order. Any bar piece. */

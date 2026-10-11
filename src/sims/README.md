@@ -143,7 +143,7 @@ A button may set `pressed: true`. Add `toggle: true` for the highlighted pressed
 
 ## Long runs
 
-One visible event per `step`. Hold that event as pending and draw it with `alpha`, from 0 up to 1, until `step` commits it. The pulse sample above does this for the next ring: the committed radius plus `alpha` is what is on screen.
+One visible event per `step`. Hold that event as pending and draw it with `alpha`, from 0 up to 1, until `step` commits it. The pulse sample above does this for the next ring: the committed radius plus `alpha` is what is on screen. `span` on the status shortens that wait: `0.5` commits halfway through a step, and `alpha` still covers the whole event. Omit it for a full step.
 
 Set `computing` while the step has nothing to draw yet, such as a search between two visible events. The shell then runs a burst of about 12ms, at most 500 steps, and draws with `alpha` 0. The search does not freeze the page, and it does not play an empty slide.
 
