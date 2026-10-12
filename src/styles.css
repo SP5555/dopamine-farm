@@ -378,6 +378,20 @@ input {
   font-size: 15px;
 }
 
+.pipe-tip {
+  position: absolute;
+  z-index: 4;
+  width: 232px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(16, 17, 20, 0.96);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
 .done-banner {
   position: absolute;
   left: 50%;

@@ -9,7 +9,7 @@ import type {
   SimStatus,
 } from '../../harness/types';
 import { startNetwork, type Network, type NetworkBuild } from './generate';
-import { drawNetwork, type PipeCell, type PipePending } from './render';
+import { drawNetwork, legendHits, type PipeCell, type PipePending } from './render';
 import { createSolver, type PipeSolver, type SolverTick } from './solver';
 import { applyRotations, countLeaks } from './tiles';
 
@@ -42,6 +42,38 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   let dpr = ctx.dpr;
   let context = ctx.canvas.getContext('2d');
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const tip = document.createElement('div');
+  tip.className = 'pipe-tip';
+  tip.hidden = true;
+  ctx.canvas.parentElement?.append(tip);
+
+  const hideTip = (): void => {
+    tip.hidden = true;
+    ctx.canvas.style.cursor = '';
+  };
+
+  const onPointerMove = (event: PointerEvent): void => {
+    const rect = ctx.canvas.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+    const x = ((event.clientX - rect.left) / rect.width) * width;
+    const y = ((event.clientY - rect.top) / rect.height) * height;
+    const hit = legendHits.find((item) => x >= item.x && x <= item.x + item.w && y >= item.y && y <= item.y + item.h);
+    if (!hit) {
+      hideTip();
+      return;
+    }
+    tip.hidden = false;
+    tip.textContent = hit.tip;
+    const host = ctx.canvas.parentElement?.getBoundingClientRect();
+    const left = event.clientX - (host?.left ?? rect.left);
+    const top = event.clientY - (host?.top ?? rect.top) + 16;
+    tip.style.left = `${Math.max(8, Math.min(left, (host?.width ?? rect.width) - 248))}px`;
+    tip.style.top = `${top}px`;
+    ctx.canvas.style.cursor = 'help';
+  };
+
+  ctx.canvas.addEventListener('pointermove', onPointerMove);
+  ctx.canvas.addEventListener('pointerleave', hideTip);
 
   let settings = readParams(paramsDefault());
   let network: Network = emptyNetwork(settings.size);
@@ -390,6 +422,9 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
       dpr = nextDpr;
     },
     dispose() {
+      ctx.canvas.removeEventListener('pointermove', onPointerMove);
+      ctx.canvas.removeEventListener('pointerleave', hideTip);
+      tip.remove();
       solver = null;
       context = null;
     },

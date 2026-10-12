@@ -2,7 +2,7 @@ import { createRng } from '../../harness/author';
 import { degree, neighbor, opposite, rotateMask, uniqueRotations } from './tiles';
 
 export type SolveEvent =
-  | { type: 'lock'; index: number; rotation: number; kind: 'deduction' | 'guess' }
+  | { type: 'lock'; index: number; rotation: number; kind: 'deduction' | 'contingent' | 'guess' }
   | { type: 'unlock'; index: number };
 
 export type SolverTick = SolveEvent | 'solved' | 'failed' | null;
@@ -24,6 +24,8 @@ interface Frame {
 const OPEN = -1;
 const DEDUCTION = 0;
 const GUESS = 1;
+/** Forced to one turn while a guess is still open. Released if that guess fails. */
+const CONTINGENT = 2;
 
 /**
  * Incremental Net solver. `next` returns one visible lock or unlock, `'solved'`,
@@ -224,7 +226,7 @@ export function createSolver(
     if (nextMask === before) return 'same';
     const wasSingle = popcount(before) === 1;
     const nowSingle = popcount(nextMask) === 1;
-    const nextKind = !wasSingle && nowSingle ? DEDUCTION : kind[index]!;
+    const nextKind = !wasSingle && nowSingle ? (frames.length > 0 ? CONTINGENT : DEDUCTION) : kind[index]!;
     const nextAnnounced = !wasSingle && nowSingle ? 1 : announced[index]!;
     setMask(index, nextMask, nextKind, nextAnnounced);
     return !wasSingle && nowSingle ? 'locked' : 'changed';
@@ -360,7 +362,8 @@ export function createSolver(
 
   function lockEvent(index: number): SolveEvent {
     deductions += 1;
-    return { type: 'lock', index, rotation: lowbit(possible[index]!), kind: 'deduction' };
+    const marked = kind[index] === CONTINGENT ? 'contingent' : 'deduction';
+    return { type: 'lock', index, rotation: lowbit(possible[index]!), kind: marked };
   }
 
   return {

@@ -5,16 +5,16 @@ export interface PipeCell {
   rot: number;
   /**
    * Painted turn count. 4 is iron, even when the tile has fewer distinct turns.
-   * 2 or 3 is the in-progress blue. A lock paints mint, and a guess paints brass, through `role`.
+   * 2 or 3 is the in-progress blue. A lock paints mint, brass, or copper through `role`.
    */
   options: number;
   /** Distinct turns this tile had before the solver removed any. */
   baseline: number;
-  role: 'open' | 'deduction' | 'guess';
+  role: 'open' | 'deduction' | 'contingent' | 'guess';
 }
 
 export type PipePending =
-  | { type: 'lock'; index: number; from: number; to: number; kind: 'deduction' | 'guess' }
+  | { type: 'lock'; index: number; from: number; to: number; kind: 'deduction' | 'contingent' | 'guess' }
   | { type: 'unlock'; index: number; from: number; to: number; options: number }
   | { type: 'turn'; index: number; from: number; to: number; options: number }
   | { type: 'tint'; index: number; options: number };
@@ -60,8 +60,10 @@ const NARROWED: Rgba = { r: 106, g: 168, b: 201, a: 1 };
 const NARROWED_CORE: Rgba = { r: 46, g: 92, b: 118, a: 1 };
 const DEDUCED: Rgba = { r: 125, g: 206, b: 160, a: 1 };
 const DEDUCED_CORE: Rgba = { r: 46, g: 108, b: 78, a: 1 };
-const GUESS: Rgba = { r: 212, g: 160, b: 74, a: 1 };
-const GUESS_CORE: Rgba = { r: 122, g: 86, b: 32, a: 1 };
+const CONTINGENT: Rgba = { r: 212, g: 160, b: 74, a: 1 };
+const CONTINGENT_CORE: Rgba = { r: 122, g: 86, b: 32, a: 1 };
+const GUESS: Rgba = { r: 196, g: 125, b: 98, a: 1 };
+const GUESS_CORE: Rgba = { r: 106, g: 62, b: 50, a: 1 };
 const SOLVED_PULSE: Rgba = { r: 229, g: 246, b: 236, a: 1 };
 
 export function drawNetwork(ctx: CanvasRenderingContext2D, state: PipeDraw): void {
@@ -73,6 +75,8 @@ export function drawNetwork(ctx: CanvasRenderingContext2D, state: PipeDraw): voi
   ctx.fillRect(0, 0, width, height);
 
   const layout = layoutGrid(state.size, width, height);
+  if (legendBand(height) > 0) drawLegend(ctx, width);
+  else legendHits.length = 0;
   drawPlate(ctx, layout, state.size);
   const alpha = clamp01(state.alpha);
   const progress = state.reducedMotion ? 1 : ease(alpha);
@@ -167,6 +171,7 @@ function appearance(
 
 function pipeColor(role: PipeCell['role'], options: number): { body: Rgba; core: Rgba; alpha: number } {
   if (role === 'guess') return { body: GUESS, core: GUESS_CORE, alpha: 1 };
+  if (role === 'contingent') return { body: CONTINGENT, core: CONTINGENT_CORE, alpha: 1 };
   if (role === 'deduction') return { body: DEDUCED, core: DEDUCED_CORE, alpha: 1 };
   if (options < 4) return { body: NARROWED, core: NARROWED_CORE, alpha: 1 };
   return { body: OPEN, core: OPEN_CORE, alpha: 1 };
@@ -379,19 +384,114 @@ function drawPulse(ctx: CanvasRenderingContext2D, layout: Layout, size: number, 
   ctx.restore();
 }
 
+export interface LegendHit {
+  label: string;
+  tip: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const LEGEND: { label: string; tip: string; body: Rgba; core: Rgba }[] = [
+  {
+    label: 'Untouched',
+    tip: 'Every distinct turn is still possible. The solver has not ruled one out yet.',
+    body: OPEN,
+    core: OPEN_CORE,
+  },
+  {
+    label: 'Narrowed',
+    tip: 'At least one turn has been ruled out, and more than one is still possible. The pipe turns when the one on screen is ruled out.',
+    body: NARROWED,
+    core: NARROWED_CORE,
+  },
+  {
+    label: 'Settled',
+    tip: 'Only one turn is left, and no guess is holding it there. This pipe stays.',
+    body: DEDUCED,
+    core: DEDUCED_CORE,
+  },
+  {
+    label: 'Provisional',
+    tip: 'Only one turn is left because a guess is still open. If that guess fails, this pipe is released.',
+    body: CONTINGENT,
+    core: CONTINGENT_CORE,
+  },
+  {
+    label: 'Guess',
+    tip: 'A turn the solver chose to try. Pipes it forces are provisional until the try holds or fails.',
+    body: GUESS,
+    core: GUESS_CORE,
+  },
+];
+
+export const legendHits: LegendHit[] = [];
+
+function legendBand(height: number): number {
+  return height < 180 ? 0 : 36;
+}
+
 function layoutGrid(size: number, width: number, height: number): Layout {
-  const margin = Math.max(28, Math.min(width, height) * 0.08);
-  const side = Math.max(size, Math.min(width, height) - margin * 2);
+  const band = legendBand(height);
+  const room = Math.max(1, height - band);
+  const margin = Math.max(28, Math.min(width, room) * 0.08);
+  const side = Math.max(size, Math.min(width, room) - margin * 2);
   const cell = side / size;
   const unit = cell / 16;
   return {
     originX: (width - side) / 2,
-    originY: (height - side) / 2,
+    originY: band + Math.max(8, (room - side) / 2),
     cell,
     outer: unit * 5,
     inner: unit * 3,
     bend: unit * 4,
   };
+}
+
+function drawLegend(ctx: CanvasRenderingContext2D, width: number): void {
+  const font = '12px ui-sans-serif, system-ui, sans-serif';
+  ctx.font = font;
+  ctx.textBaseline = 'middle';
+  const chipW = 26;
+  const chipH = 8;
+  const textGap = 7;
+  const itemGap = width < 640 ? 10 : 18;
+  const widths = LEGEND.map((item) => chipW + textGap + ctx.measureText(item.label).width);
+  const total = widths.reduce((sum, item) => sum + item, 0) + itemGap * (LEGEND.length - 1);
+  let x = Math.max(12, (width - total) / 2);
+  const y = 18;
+  legendHits.length = 0;
+  for (let index = 0; index < LEGEND.length; index += 1) {
+    const item = LEGEND[index]!;
+    const itemWidth = widths[index]!;
+    drawChip(ctx, x, y, chipW, chipH, item.body, item.core);
+    ctx.fillStyle = '#c4c0b8';
+    ctx.fillText(item.label, x + chipW + textGap, y + 0.5);
+    legendHits.push({ label: item.label, tip: item.tip, x, y: y - 14, w: itemWidth, h: 28 });
+    x += itemWidth + itemGap;
+  }
+}
+
+function drawChip(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  body: Rgba,
+  core: Rgba,
+): void {
+  const top = y - height / 2;
+  ctx.fillStyle = rgbaCss(body);
+  ctx.beginPath();
+  ctx.roundRect(x, top, width, height, height / 2);
+  ctx.fill();
+  const inner = height * 0.46;
+  ctx.fillStyle = rgbaCss(core);
+  ctx.beginPath();
+  ctx.roundRect(x + 2, y - inner / 2, width - 4, inner, inner / 2);
+  ctx.fill();
 }
 
 function cellOrigin(layout: Layout, size: number, index: number): { x: number; y: number } {
