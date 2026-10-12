@@ -137,7 +137,7 @@ aside: [{ type: 'metric', id: 'radius', label: 'Radius', value: radius }],
 toolbar: () => [...host.transport(), { type: 'readout', id: 'radius', label: 'Radius', value: String(radius) }],
 ```
 
-A sim that never calls those leaves them unused. Omitting `toolbar()` still leaves the top bar empty. The shell shows the seed there either way. The speed slider maps 0–1000 onto 0.5–240 steps per second, and a fresh page starts at 8. Switching to another sim starts at 8 again. Replay and Restart keep the speed set for this one.
+A sim that never calls those leaves them unused. Omitting `toolbar()` still leaves the top bar empty. The shell shows the seed there either way. The address is the path: the sim id, the seed, and any param that differs from its default. An old `#/id` link still opens, and the shell rewrites it to the path. The speed slider maps 0–1000 onto 0.5–240 steps per second, and a fresh page starts at 8. Switching to another sim starts at 8 again. Replay and Restart keep the speed set for this one.
 
 A button may set `pressed: true`. Add `toggle: true` for the highlighted pressed style. `shortcut` adds a key and a hint. The hint line joins every shortcut from both bars. `repeat: true` keeps firing while the key is held.
 

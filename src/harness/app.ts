@@ -11,7 +11,7 @@ import { createStatusBar, statusHasBody } from './status-bar';
 import { transportPieces } from './transport';
 import type { ParamSchema, Params, SimHost, SimInstance, SimMeta, SimStatus } from './types';
 
-const HASH_DELAY_MS = 100;
+const ROUTE_DELAY_MS = 100;
 const RESTART_DELAY_MS = 2500;
 
 interface Mounted {
@@ -86,7 +86,7 @@ export function createApp(root: HTMLElement): App {
   let elapsedMs = 0;
   let tickAt = 0;
   let ticking = false;
-  let hashTimer = 0;
+  let routeTimer = 0;
   let restartTimer = 0;
   let lastRoute = '';
 
@@ -193,6 +193,7 @@ export function createApp(root: HTMLElement): App {
     statusBar.setEnabled(false);
     document.title = 'Dopamine Farm';
   } else {
+    // Older links used #/id. The address is the path now.
     const route = parseRoute(location.hash.startsWith('#/') ? location.hash : `${location.pathname}${location.search}`);
     const initial = route.simId && metaById.has(route.simId) ? route.simId : metas[0]!.id;
     const initialSeed = route.simId === initial && route.seed !== null ? route.seed : randomSeed();
@@ -205,7 +206,7 @@ export function createApp(root: HTMLElement): App {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('popstate', onPopState);
       clearRestart();
-      window.clearTimeout(hashTimer);
+      window.clearTimeout(routeTimer);
       unmountSim();
       loop.stop();
       root.replaceChildren();
@@ -278,19 +279,19 @@ export function createApp(root: HTMLElement): App {
             if (!structural) {
               const value = params[key];
               if (value !== undefined) instance.setParams?.({ [key]: value }, params);
-              scheduleHash();
+              scheduleRoute();
               return;
             }
             if (!commit) return;
             restartRun();
-            scheduleHash();
+            scheduleRoute();
           },
           onResetDefaults: () => {
             for (const [key, def] of Object.entries(schema)) params[key] = def.default;
-        sim.normalize?.(params);
-        panel?.refresh();
+            sim.normalize?.(params);
+            panel?.refresh();
             restartRun();
-            scheduleHash();
+            scheduleRoute();
           },
         })
       : null;
@@ -323,12 +324,12 @@ export function createApp(root: HTMLElement): App {
     statusRoot.hidden = !statusHasBody(opened);
     syncHints();
     syncSeed();
-    writeHash();
+    writeRoute();
   }
 
   function unmountSim(): void {
     clearRestart();
-    window.clearTimeout(hashTimer);
+    window.clearTimeout(routeTimer);
     loop.stop();
     if (!mounted) return;
     mounted.observer.disconnect();
@@ -354,7 +355,7 @@ export function createApp(root: HTMLElement): App {
     statusBar.clear();
     seed = nextSeed >>> 0;
     mounted.instance.reset(mounted.params, seed);
-    writeHash();
+    writeRoute();
     wantPlay = true;
     loop.setPaused(false);
     restartClock();
@@ -474,16 +475,17 @@ export function createApp(root: HTMLElement): App {
     restartTimer = 0;
   }
 
-  function scheduleHash(): void {
-    window.clearTimeout(hashTimer);
-    hashTimer = window.setTimeout(writeHash, HASH_DELAY_MS);
+  function scheduleRoute(): void {
+    window.clearTimeout(routeTimer);
+    routeTimer = window.setTimeout(writeRoute, ROUTE_DELAY_MS);
   }
 
-  function writeHash(): void {
+  function writeRoute(): void {
     if (!mounted) return;
-    window.clearTimeout(hashTimer);
+    window.clearTimeout(routeTimer);
     const next = buildRoute(mounted.id, seed, mounted.schema, mounted.params);
     const current = `${location.pathname}${location.search}`;
+    // A leftover #/id still needs replacing, even when the path already matches.
     if (current === next && location.hash === '') {
       lastRoute = next;
       return;

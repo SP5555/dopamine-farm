@@ -2,7 +2,6 @@ export interface SimMeta {
   id: string;
   title: string;
   description: string;
-  tags?: string[];
   /**
    * Nav position. Lower comes first. The first sim is what opens when the address
    * has no id. Sims that omit this sort after the numbered ones, then by title.
@@ -10,9 +9,9 @@ export interface SimMeta {
   order?: number;
 }
 
-/** Which shell slots a sim uses. Omitted fields stay on. */
+/** Which shell slots a sim uses. An omitted field uses the default described on that field. */
 export interface SimChrome {
-  /** Config panel. Defaults on when `params` has at least one key. */
+  /** Config panel. On when the schema has a param, unless this says otherwise. */
   params?: boolean;
 }
 
@@ -32,9 +31,9 @@ export type BarPiece =
       id: string;
       label: string;
       shortcut?: BarShortcut;
-      /** Draws the pressed style. Omit it for a plain button. */
+      /** Reports the button as pressed. Omit it for a plain button. */
       pressed?: boolean;
-      /** Use the pressed highlight. Plain buttons leave this off. */
+      /** Draws the pressed highlight. A button can be pressed without this. */
       toggle?: boolean;
       disabled?: boolean;
       onClick: () => void;
@@ -186,7 +185,7 @@ export interface SimInstance<P extends Params = Params> {
 
 export interface SimModule<P extends Params = Params> {
   params: ParamSchema;
-  /** Shell slots. Omitted fields use the defaults in `SimChrome`. */
+  /** Shell slots. See `SimChrome` for what each omitted field does. */
   chrome?: SimChrome;
   /** Pulls the param bag back to a combination this sim can run. */
   normalize?(params: Params): void;

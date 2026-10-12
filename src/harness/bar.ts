@@ -211,11 +211,11 @@ export function createBar(root: HTMLElement): Bar {
       }
     },
     hint() {
-      return current
-        .filter((item) => item.type === 'button' && item.shortcut)
-        .map((item) => (item.type === 'button' ? item.shortcut?.hint : ''))
-        .filter((hint): hint is string => Boolean(hint))
-        .join(' · ');
+      const hints: string[] = [];
+      for (const item of current) {
+        if (item.type === 'button' && item.shortcut) hints.push(item.shortcut.hint);
+      }
+      return hints.join(' · ');
     },
     handleKey(event) {
       if (!enabled) return false;

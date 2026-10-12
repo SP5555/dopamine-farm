@@ -37,14 +37,16 @@ export function applyQuery(schema: ParamSchema, query: Record<string, string>): 
   return params;
 }
 
+function stepDecimals(step: number): number {
+  return Math.min(6, Math.max(0, Math.round(-Math.log10(step))));
+}
+
 function snapNumber(def: Extract<ParamDef, { type: 'number' }>, value: number): number {
   if (!def.step || def.step <= 0) return value;
   const steps = Math.round((value - def.min) / def.step);
   let snapped = def.min + steps * def.step;
-  if (def.step < 1) {
-    const decimals = Math.min(6, Math.max(0, Math.round(-Math.log10(def.step))));
-    snapped = Number(snapped.toFixed(decimals));
-  } else {
+  if (def.step < 1) snapped = Number(snapped.toFixed(stepDecimals(def.step)));
+  else {
     snapped = Math.round(snapped);
   }
   return Math.min(def.max, Math.max(def.min, snapped));
@@ -59,10 +61,7 @@ export function differsFromDefault(def: ParamDef, value: Params[string]): boolea
 
 export function serializeParam(def: ParamDef, value: Params[string]): string {
   if (def.type === 'number' && typeof value === 'number') {
-    if (def.step && def.step < 1) {
-      const decimals = Math.min(6, Math.max(0, Math.round(-Math.log10(def.step))));
-      return value.toFixed(decimals);
-    }
+    if (def.step && def.step < 1) return value.toFixed(stepDecimals(def.step));
     return String(Math.round(value));
   }
   return String(value);

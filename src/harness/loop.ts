@@ -69,7 +69,7 @@ export function createLoop(hooks: LoopHooks): Loop {
     const begin = hooks.getStatus();
 
     if (pendingSteps > 0) {
-      // Play one move at the current speed, then hold. Same slide as playback.
+      // Play one step at the current speed, then hold. Same slide as playback.
       coast = false;
       if (begin.done) {
         pendingSteps = 0;
