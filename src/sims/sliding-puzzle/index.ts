@@ -17,7 +17,7 @@ import {
 import { formatCount, formatSeconds } from './format';
 import { drawPuzzle } from './render';
 import { uniformScramble, walkScramble } from './scramble';
-import { applyLegal, legalize, solverOptionAvailable } from './limits';
+import { applyLegal, legalize, solverOptionAvailable, type SolverId } from './limits';
 import { createHumanSolver } from './solvers/human';
 import { createIdaStar } from './solvers/ida-star';
 import type { Search } from './solvers/search';
@@ -96,8 +96,13 @@ export const params: ParamSchema = {
       },
       {
         value: 'human',
-        label: 'Human (placement)',
-        detail: 'Places each tile on a fixed plan, so any size can finish.',
+        label: 'One tile at a time',
+        detail: 'Places one tile at a time.',
+      },
+      {
+        value: 'pairs',
+        label: 'Two tiles at a time',
+        detail: 'Places two tiles at a time.',
       },
     ],
     available: solverOptionAvailable,
@@ -120,7 +125,7 @@ export const params: ParamSchema = {
         detail: 'Finishes a row, then the column beside it, and repeats toward the corner.',
       },
     ],
-    when: (current) => current.solver === 'human',
+    when: (current) => current.solver === 'human' || current.solver === 'pairs',
     group: 'Solver',
   },
   weight: {
@@ -151,7 +156,7 @@ interface PuzzleParams {
   size: number;
   scramble: 'walk' | 'uniform';
   walkLength: number;
-  solver: 'ida' | 'wastar' | 'human';
+  solver: SolverId;
   order: 'rows' | 'inward';
   weight: number;
   nodeBudget: number;
@@ -181,6 +186,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   let fadeTo: Uint8Array | null = null;
   let search: Search | null = null;
   let solution: Move[] = [];
+  let focus: readonly (readonly number[])[] = [];
   let playIndex = 0;
   let optimal = false;
   let fellBack = false;
@@ -200,6 +206,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     showNumbers = settings.showNumbers;
     search = null;
     solution = [];
+    focus = [];
     playIndex = 0;
     pendingMove = null;
     fadeTo = null;
@@ -253,7 +260,9 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     board = new Uint8Array(scrambled);
     metricValue = manhattan(board, size);
     if (settings.solver === 'ida') search = createIdaStar(scrambled, size, settings.nodeBudget);
-    else if (settings.solver === 'human') search = createHumanSolver(scrambled, size, settings.order);
+    else if (settings.solver === 'human' || settings.solver === 'pairs') {
+      search = createHumanSolver(scrambled, size, settings.order, settings.solver === 'pairs' ? 'runs' : 'tail');
+    }
     else search = createWeightedAStar(scrambled, size, settings.weight);
   }
 
@@ -262,6 +271,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     nodes = baseNodes + search.nodes;
     searchMs = baseMs + search.elapsedMs;
     solution = search.solution();
+    focus = search.focus?.() ?? [];
     search = null;
     optimal =
       !fellBack && (settings.solver === 'ida' || (settings.solver === 'wastar' && settings.weight === 1));
@@ -375,6 +385,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
       fadeTo: phase === 'scramble' ? fadeTo : null,
       solvedAt: phase === 'solved' && !failed ? solvedAt : 0,
       reducedMotion,
+      focusTiles: phase === 'play' ? (focus[playIndex] ?? []) : [],
     });
   }
 
@@ -474,7 +485,8 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   function solverLabel(): string {
     if (fellBack) return 'A* w=2 fallback';
     if (settings.solver === 'ida') return 'IDA*';
-    if (settings.solver === 'human') return settings.order === 'inward' ? 'Human inward' : 'Human rows';
+    if (settings.solver === 'human') return settings.order === 'inward' ? 'One tile, inward' : 'One tile, rows';
+    if (settings.solver === 'pairs') return settings.order === 'inward' ? 'Two tiles, inward' : 'Two tiles, rows';
     return `A* w=${settings.weight.toFixed(1)}`;
   }
 

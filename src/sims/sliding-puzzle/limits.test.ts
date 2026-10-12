@@ -56,6 +56,11 @@ describe('sliding puzzle limits', () => {
       order: 'inward',
     });
 
+    expect(legalize(bag({ size: '5', scramble: 'walk', solver: 'pairs', order: 'inward', walkLength: 40, weight: 2 }))).toMatchObject({
+      solver: 'pairs',
+      order: 'inward',
+    });
+
     expect(legalize(bag({ size: '14', scramble: 'walk', solver: 'ida', walkLength: 40, weight: 2 }))).toMatchObject({
       size: 14,
       solver: 'human',

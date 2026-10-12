@@ -12,6 +12,7 @@ export interface DrawState {
   fadeTo: Uint8Array | null;
   solvedAt: number;
   reducedMotion: boolean;
+  focusTiles: readonly number[];
 }
 
 interface Layout {
@@ -30,6 +31,8 @@ interface Layout {
 const STAGE = '#12141a';
 const PLATE = '#232733';
 const HOME_BORDER = '#ffffff';
+const FOCUS_BORDER = '#ff2436';
+const FOCUS_PULSE_MS = 1800;
 
 export function drawPuzzle(ctx: CanvasRenderingContext2D, state: DrawState): void {
   const { width, height, dpr } = state;
@@ -44,15 +47,25 @@ export function drawPuzzle(ctx: CanvasRenderingContext2D, state: DrawState): voi
   const alpha = clamp01(state.alpha);
 
   if (state.fadeTo) {
-    drawTiles(ctx, state.board, state.size, layout, state.showNumbers, null, 0);
+    drawTiles(ctx, state.board, state.size, layout, state.showNumbers, null, 0, state.focusTiles, state.reducedMotion);
     if (alpha > 0) {
       ctx.save();
       ctx.globalAlpha = ease(alpha);
-      drawTiles(ctx, state.fadeTo, state.size, layout, state.showNumbers, null, 0);
+      drawTiles(ctx, state.fadeTo, state.size, layout, state.showNumbers, null, 0, state.focusTiles, state.reducedMotion);
       ctx.restore();
     }
   } else {
-    drawTiles(ctx, state.board, state.size, layout, state.showNumbers, state.pendingMove, alpha);
+    drawTiles(
+      ctx,
+      state.board,
+      state.size,
+      layout,
+      state.showNumbers,
+      state.pendingMove,
+      alpha,
+      state.focusTiles,
+      state.reducedMotion,
+    );
   }
 
   if (state.solvedAt > 0 && !state.reducedMotion) {
@@ -98,11 +111,18 @@ function drawTiles(
   showNumbers: boolean,
   pendingMove: Move | null,
   alpha: number,
+  focusTiles: readonly number[],
+  reducedMotion: boolean,
 ): void {
   const placed = placedTiles(board, size, layout, pendingMove, alpha);
   const fontSize = labelFontSize(ctx, layout.tile, size);
+  const focus = new Set(focusTiles);
+  const wave = focusWave(reducedMotion);
   for (const tile of placed) {
-    paintTile(ctx, layout, tile.tile, size, tile.origin, showNumbers, fontSize, tile.home);
+    paintTile(ctx, layout, tile.tile, size, tile.origin, showNumbers, fontSize, tile.home, focus.has(tile.tile));
+  }
+  for (const tile of placed) {
+    if (focus.has(tile.tile)) drawFocus(ctx, layout, tile.origin, wave);
   }
 }
 
@@ -194,13 +214,14 @@ function paintTile(
   showNumbers: boolean,
   fontSize: number,
   home: number,
+  focused: boolean,
 ): void {
   const color = tileColor(size, tile);
   ctx.beginPath();
   ctx.roundRect(origin.x, origin.y, layout.tile, layout.tile, layout.radius);
   ctx.fillStyle = color.fill;
   ctx.fill();
-  if (home > 0.02) {
+  if (!focused && home > 0.02) {
     ctx.save();
     ctx.clip();
     ctx.globalAlpha *= home;
@@ -215,6 +236,42 @@ function paintTile(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(String(tile), origin.x + layout.tile / 2, origin.y + layout.tile / 2 + 1);
+}
+
+/** 0 at the tile edge, 1 after the ring has grown out and faded. Then it starts over. */
+function focusWave(reducedMotion: boolean): number | null {
+  if (reducedMotion) return null;
+  return (performance.now() % FOCUS_PULSE_MS) / FOCUS_PULSE_MS;
+}
+
+function drawFocus(
+  ctx: CanvasRenderingContext2D,
+  layout: Layout,
+  origin: { x: number; y: number },
+  wave: number | null,
+): void {
+  const lineWidth = Math.max(3, layout.tile * 0.055);
+  ctx.save();
+  ctx.strokeStyle = FOCUS_BORDER;
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  ctx.roundRect(origin.x, origin.y, layout.tile, layout.tile, layout.radius);
+  ctx.stroke();
+
+  if (wave !== null && wave < 0.98) {
+    const spread = wave * Math.max(10, layout.tile * 0.14);
+    ctx.beginPath();
+    ctx.roundRect(
+      origin.x - spread,
+      origin.y - spread,
+      layout.tile + spread * 2,
+      layout.tile + spread * 2,
+      layout.radius + spread,
+    );
+    ctx.globalAlpha = 0.9 * (1 - wave);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawFlourish(ctx: CanvasRenderingContext2D, layout: Layout, solvedAt: number): void {

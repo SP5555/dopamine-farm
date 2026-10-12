@@ -8,7 +8,7 @@ import {
   type Move,
 } from '../board';
 import { uniformScramble, walkScramble } from '../scramble';
-import { createHumanSolver } from './human';
+import { createHumanSolver, placementUnits, solveHuman } from './human';
 import { createIdaStar } from './ida-star';
 import type { Search } from './search';
 import { createWeightedAStar } from './weighted-astar';
@@ -120,6 +120,44 @@ describe('sliding puzzle solvers', () => {
         expect(search.solution().length).toBeGreaterThan(0);
         expect(search.solution().length).toBeLessThan(size * size * size * 8);
         expect(replay(board, search.solution(), size)).toBe(true);
+      }
+    }
+  });
+
+  it('pairs an odd line after one tile and an even line all the way', () => {
+    expect(placementUnits([0, 1, 2, 3, 4], 'tail')).toEqual([[0], [1], [2], [3, 4]]);
+    expect(placementUnits([0, 1, 2, 3, 4], 'runs')).toEqual([[0], [1, 2], [3, 4]]);
+    expect(placementUnits([0, 1, 2, 3], 'runs')).toEqual([
+      [0, 1],
+      [2, 3],
+    ]);
+  });
+
+  it('marks each move with the tiles that placement is seating', () => {
+    const board = walkScramble(5, 40, 1).finalBoard;
+    for (const pairing of ['tail', 'runs'] as const) {
+      const solved = solveHuman(board, 5, 'rows', pairing);
+      expect(solved.moves, pairing).not.toBeNull();
+      expect(solved.focus, pairing).toHaveLength(solved.moves!.length);
+      for (const tiles of solved.focus) {
+        expect(tiles.length).toBeGreaterThan(0);
+        expect(tiles.length).toBeLessThanOrEqual(5);
+      }
+      const pocket = solved.focus.find((tiles) => tiles.length > 2);
+      expect(pocket, pairing).toBeTruthy();
+    }
+  });
+
+  it('solves with pair runs and uses fewer moves than one-tile placement', () => {
+    for (const order of ['rows', 'inward'] as const) {
+      for (const size of [5, 6, 8]) {
+        const board = walkScramble(size, 40, 1).finalBoard;
+        const tail = solveHuman(board, size, order, 'tail');
+        const runs = solveHuman(board, size, order, 'runs');
+        expect(tail.moves, `${order} ${size} tail`).not.toBeNull();
+        expect(runs.moves, `${order} ${size} runs`).not.toBeNull();
+        expect(replay(board, runs.moves!, size)).toBe(true);
+        expect(runs.moves!.length).toBeLessThanOrEqual(tail.moves!.length);
       }
     }
   });

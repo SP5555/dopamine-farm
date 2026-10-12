@@ -14,20 +14,30 @@ import type { Search } from './search';
  * the column beside it.
  * A single tile is walked home while finished cells stay walls.
  * The last two cells of a row or column are placed together, because a
- * one-cell pocket cannot accept a new tile. The final handful of cells
+ * one-cell pocket cannot accept a new tile. Pair runs do that for every
+ * neighboring couple, and place one tile first only when the length is odd.
+ * The final handful of cells
  * is solved exhaustively. Memory stays on the order of one row, not the
  * whole puzzle.
  */
 export type HumanOrder = 'rows' | 'inward';
+/** `tail` pairs only the last two cells. `runs` pairs the whole line, with one single tile first when the length is odd. */
+export type HumanPairing = 'tail' | 'runs';
 
 const YIELD_EVERY = 2048;
 
-export function createHumanSolver(start: Uint8Array, size: number, order: HumanOrder = 'rows'): Search {
-  const walk = walkHuman(start, size, order);
+export function createHumanSolver(
+  start: Uint8Array,
+  size: number,
+  order: HumanOrder = 'rows',
+  pairing: HumanPairing = 'tail',
+): Search {
+  const walk = walkHuman(start, size, order, pairing);
   let found = false;
   let failed = false;
   let finished = false;
   let moves: Move[] = [];
+  let focus: readonly (readonly number[])[] = [];
   let nodes = 0;
   let elapsedMs = 0;
 
@@ -42,6 +52,7 @@ export function createHumanSolver(start: Uint8Array, size: number, order: HumanO
           nodes = next.value.nodes;
           if (next.value.moves && replays(start, next.value.moves, size)) {
             moves = next.value.moves;
+            focus = next.value.focus;
             found = true;
           } else {
             failed = true;
@@ -55,6 +66,7 @@ export function createHumanSolver(start: Uint8Array, size: number, order: HumanO
       elapsedMs += performance.now() - started;
     },
     solution: () => moves,
+    focus: () => focus,
     get found() {
       return found;
     },
@@ -88,8 +100,9 @@ export function solveHuman(
   start: Uint8Array,
   size: number,
   order: HumanOrder = 'rows',
-): { moves: Move[] | null; nodes: number } {
-  const walk = walkHuman(start, size, order);
+  pairing: HumanPairing = 'tail',
+): { moves: Move[] | null; nodes: number; focus: readonly (readonly number[])[] } {
+  const walk = walkHuman(start, size, order, pairing);
   let step = walk.next();
   while (!step.done) step = walk.next();
   return step.value;
@@ -99,10 +112,12 @@ function* walkHuman(
   start: Uint8Array,
   size: number,
   order: HumanOrder,
-): Generator<number, { moves: Move[] | null; nodes: number }> {
+  pairing: HumanPairing,
+): Generator<number, { moves: Move[] | null; nodes: number; focus: readonly (readonly number[])[] }> {
   const board = new Uint8Array(start);
   const frozen = new Uint8Array(board.length);
   const moves: Move[] = [];
+  const focus: number[][] = [];
   let nodes = 0;
   const spend = (count: number) => {
     nodes += count;
@@ -113,76 +128,83 @@ function* walkHuman(
     const pocket = yield* solvePocket(board, size, frozen);
     spend(pocket.nodes);
     if (!pocket.moves) return false;
-    commit(board, size, moves, pocket.moves);
+    commit(board, size, moves, focus, pocket.moves, looseTiles(board, frozen));
     return true;
   }
 
-  function* finish(): Generator<number, { moves: Move[] | null; nodes: number } | null> {
+  function* finish(): Generator<number, { moves: Move[] | null; nodes: number; focus: number[][] } | null> {
     const done = yield* finishIfSmall();
     if (done === null) return null;
-    return done ? { moves: compress(moves), nodes } : { moves: null, nodes };
+    return done ? packed() : { moves: null, nodes, focus: [] };
+  }
+
+  function packed(): { moves: Move[]; nodes: number; focus: number[][] } {
+    return { ...compress(moves, focus), nodes };
+  }
+
+  function* placeHomes(
+    homes: readonly number[],
+  ): Generator<number, { moves: Move[] | null; nodes: number; focus: number[][] } | null> {
+    for (const unit of placementUnits(homes, pairing)) {
+      const done = yield* finish();
+      if (done) return done;
+      const placed =
+        unit.length === 1
+          ? yield* placeTile(board, size, unit[0]!, frozen, moves, focus, spend)
+          : yield* placePair(board, size, unit[0]!, unit[1]!, frozen, moves, focus, spend);
+      if (!placed) return { moves: null, nodes, focus: [] };
+    }
+    return null;
   }
 
   if (size > 2 && order === 'inward') {
     for (let origin = 0; size - origin > 2; origin += 1) {
-      for (let col = origin; col < size - 2; col += 1) {
-        const done = yield* finish();
-        if (done) return done;
-        if (!(yield* placeTile(board, size, origin * size + col, frozen, moves, spend))) {
-          return { moves: null, nodes };
-        }
-      }
-      const rowDone = yield* finish();
-      if (rowDone) return rowDone;
-      const rowA = origin * size + (size - 2);
-      if (!(yield* placePair(board, size, rowA, rowA + 1, frozen, moves, spend))) {
-        return { moves: null, nodes };
-      }
-
-      for (let row = origin + 1; row < size - 2; row += 1) {
-        const done = yield* finish();
-        if (done) return done;
-        if (!(yield* placeTile(board, size, row * size + origin, frozen, moves, spend))) {
-          return { moves: null, nodes };
-        }
-      }
-      const colDone = yield* finish();
-      if (colDone) return colDone;
-      const colA = (size - 2) * size + origin;
-      if (!(yield* placePair(board, size, colA, colA + size, frozen, moves, spend))) {
-        return { moves: null, nodes };
-      }
+      const rowHomes: number[] = [];
+      for (let col = origin; col < size; col += 1) rowHomes.push(origin * size + col);
+      const rowPlaced = yield* placeHomes(rowHomes);
+      if (rowPlaced) return rowPlaced;
+      const colHomes: number[] = [];
+      for (let row = origin + 1; row < size; row += 1) colHomes.push(row * size + origin);
+      const colPlaced = yield* placeHomes(colHomes);
+      if (colPlaced) return colPlaced;
     }
   } else if (size > 2) {
     for (let row = 0; row < size - 2; row += 1) {
-      for (let col = 0; col < size - 2; col += 1) {
-        const done = yield* finish();
-        if (done) return done;
-        if (!(yield* placeTile(board, size, row * size + col, frozen, moves, spend))) {
-          return { moves: null, nodes };
-        }
-      }
-      const paired = yield* finish();
-      if (paired) return paired;
-      const homeA = row * size + (size - 2);
-      if (!(yield* placePair(board, size, homeA, homeA + 1, frozen, moves, spend))) {
-        return { moves: null, nodes };
-      }
+      const homes: number[] = [];
+      for (let col = 0; col < size; col += 1) homes.push(row * size + col);
+      const placed = yield* placeHomes(homes);
+      if (placed) return placed;
     }
     const band = size - 2;
     for (let col = 0; col < size - 2; col += 1) {
-      const done = yield* finish();
-      if (done) return done;
-      const homeU = band * size + col;
-      if (!(yield* placePair(board, size, homeU, homeU + size, frozen, moves, spend))) {
-        return { moves: null, nodes };
-      }
+      const placed = yield* placeHomes([band * size + col, (band + 1) * size + col]);
+      if (placed) return placed;
     }
   }
 
   const done = yield* finishIfSmall();
-  if (done !== true) return { moves: null, nodes };
-  return { moves: compress(moves), nodes };
+  if (done !== true) return { moves: null, nodes, focus: [] };
+  return packed();
+}
+
+/** Last two cells stay a pair. `runs` also pairs every earlier adjacent couple, leaving a single tile only when the line length is odd. */
+export function placementUnits(homes: readonly number[], pairing: HumanPairing): number[][] {
+  if (homes.length === 0) return [];
+  if (pairing === 'tail') {
+    if (homes.length === 1) return [[homes[0]!]];
+    const units: number[][] = [];
+    for (let index = 0; index < homes.length - 2; index += 1) units.push([homes[index]!]);
+    units.push([homes[homes.length - 2]!, homes[homes.length - 1]!]);
+    return units;
+  }
+  const units: number[][] = [];
+  let index = 0;
+  if (homes.length % 2 === 1) {
+    units.push([homes[0]!]);
+    index = 1;
+  }
+  for (; index < homes.length; index += 2) units.push([homes[index]!, homes[index + 1]!]);
+  return units;
 }
 
 function* placeTile(
@@ -191,12 +213,13 @@ function* placeTile(
   goal: number,
   frozen: Uint8Array,
   moves: Move[],
+  focus: number[][],
   spend: (count: number) => void,
 ): Generator<number, boolean> {
   const routed = yield* routeTile(board, size, goal + 1, goal, frozen);
   spend(routed.nodes);
   if (!routed.moves) return false;
-  commit(board, size, moves, routed.moves);
+  commit(board, size, moves, focus, routed.moves, [goal + 1]);
   if (board[goal] !== goal + 1) return false;
   frozen[goal] = 1;
   return true;
@@ -209,6 +232,7 @@ function* placePair(
   goalB: number,
   frozen: Uint8Array,
   moves: Move[],
+  focus: number[][],
   spend: (count: number) => void,
 ): Generator<number, boolean> {
   const tileA = goalA + 1;
@@ -221,18 +245,36 @@ function* placePair(
   const routed = yield* routePair(board, size, tileA, goalA, tileB, goalB, frozen);
   spend(routed.nodes);
   if (!routed.moves) return false;
-  commit(board, size, moves, routed.moves);
+  commit(board, size, moves, focus, routed.moves, [tileA, tileB]);
   if (board[goalA] !== tileA || board[goalB] !== tileB) return false;
   frozen[goalA] = 1;
   frozen[goalB] = 1;
   return true;
 }
 
-function commit(board: Uint8Array, size: number, moves: Move[], extra: readonly Move[]): void {
+function commit(
+  board: Uint8Array,
+  size: number,
+  moves: Move[],
+  focus: number[][],
+  extra: readonly Move[],
+  tiles: readonly number[],
+): void {
+  const mark = tiles.slice();
   for (const move of extra) {
     applyMove(board, move, size);
     moves.push(move);
+    focus.push(mark);
   }
+}
+
+function looseTiles(board: Uint8Array, frozen: Uint8Array): number[] {
+  const tiles: number[] = [];
+  for (let index = 0; index < board.length; index += 1) {
+    const tile = board[index]!;
+    if (frozen[index] === 0 && tile !== 0) tiles.push(tile);
+  }
+  return tiles;
 }
 
 function freeCount(frozen: Uint8Array): number {
@@ -469,14 +511,24 @@ function moveBetween(from: number, to: number, size: number): Move | null {
   return null;
 }
 
-function compress(moves: readonly Move[]): Move[] {
-  const stack: Move[] = [];
-  for (const move of moves) {
-    const last = stack[stack.length - 1];
-    if (last !== undefined && opposite(last) === move) stack.pop();
-    else stack.push(move);
+function compress(
+  moves: readonly Move[],
+  focus: readonly (readonly number[])[],
+): { moves: Move[]; focus: number[][] } {
+  const keptMoves: Move[] = [];
+  const keptFocus: number[][] = [];
+  for (let index = 0; index < moves.length; index += 1) {
+    const move = moves[index]!;
+    const last = keptMoves[keptMoves.length - 1];
+    if (last !== undefined && opposite(last) === move) {
+      keptMoves.pop();
+      keptFocus.pop();
+    } else {
+      keptMoves.push(move);
+      keptFocus.push(focus[index]!.slice());
+    }
   }
-  return stack;
+  return { moves: keptMoves, focus: keptFocus };
 }
 
 function replays(start: Uint8Array, moves: readonly Move[], size: number): boolean {

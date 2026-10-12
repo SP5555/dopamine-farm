@@ -1,6 +1,6 @@
 import type { Params, SelectOption } from '../../harness/types';
 
-const SOLVERS = ['ida', 'wastar', 'human'] as const;
+const SOLVERS = ['ida', 'wastar', 'human', 'pairs'] as const;
 
 export type SolverId = (typeof SOLVERS)[number];
 export type ScrambleId = 'walk' | 'uniform';
@@ -49,7 +49,7 @@ export function applyLegal(params: Params): void {
 
 export function solverOptionAvailable(option: SelectOption, params: Params): boolean | { note: string; detail: string } {
   const size = boardSize(params.size);
-  if (option.value === 'human') return true;
+  if (option.value === 'human' || option.value === 'pairs') return true;
   if (option.value === 'ida') {
     return size <= 4 ? true : { note: 'too big', detail: 'Optimal search only runs on a 3×3 or 4×4.' };
   }
@@ -60,13 +60,13 @@ export function solverOptionAvailable(option: SelectOption, params: Params): boo
 }
 
 function solverFits(solver: SolverId, size: number): boolean {
-  if (solver === 'human') return true;
+  if (solver === 'human' || solver === 'pairs') return true;
   return size <= 4;
 }
 
 function solverId(value: Params[string] | undefined): SolverId {
   if (value === 'frame') return 'human';
-  if (value === 'ida' || value === 'wastar' || value === 'human') return value;
+  if (value === 'ida' || value === 'wastar' || value === 'human' || value === 'pairs') return value;
   return 'wastar';
 }
 
