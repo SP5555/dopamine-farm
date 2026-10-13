@@ -19,3 +19,7 @@ Ask for a call when the note is choosing what every sim should do. Decide for yo
 Write `docs/harness-reply-<id>.md`. One problem from the note, one decision. A note that bundles several problems gets an answer for each.
 
 Say what changed and how a sim uses it. Say what you left and why. Update [src/sims/README.md](../sims/README.md) when the contract changed, so the next sim follows the new rule. Leave the requesting sim's code alone. Its author picks up the reply.
+
+## The code
+
+Rewrite the shell's own code whenever it gets messy or a clearer shape is obvious. Anything in this folder is fair game. The contract every sim follows stays the same.
