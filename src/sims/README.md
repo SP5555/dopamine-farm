@@ -1,4 +1,8 @@
-# Add a simulation
+# Simulations
+
+For the agent who adds or changes a simulation. The shell is [src/harness/README.md](../harness/README.md).
+
+## Add a simulation
 
 Create `src/sims/<id>/meta.ts` and `src/sims/<id>/index.ts`. The nav picks up `meta.ts` on its own, and `index.ts` loads when that sim is opened.
 
@@ -78,8 +82,8 @@ Import from `src/harness/author.ts`.
 | `SimModule`, `SimMeta`, `SimContext`, `SimStatus`, `SimInstance` | The types for `meta` and `sim`. |
 | `SimHost`, `BarPiece` | The host, and a piece either bar can show. |
 | `ParamSchema`, `Params`, `SelectOption`, `UnavailableChoice` | Param definitions, when you want them named. |
-| `SimChrome` | Hides Config. |
-| `createRng` | A seeded random stream. `reset` receives the seed. |
+| `SimChrome` | Turns Config or the shell seed off. |
+| `createRng`, `randomSeed` | A seeded stream, and a roll when the sim owns the seed. |
 
 ## Bars
 
@@ -127,7 +131,7 @@ row: [
 aside: [{ type: 'metric', id: 'radius', label: 'Radius', value: radius }],
 ```
 
-`row` is the left side of the footer and `aside` is the right side. `note` is the line underneath. `banner` is the title of the done banner. Leave a list out and that part stays blank.
+`row` is the left side of the footer and `aside` is the right side. `note` is the line underneath. `banner` is the title of the done banner. Leave a list out and that part stays blank. A metric's sparkline is one trace for its id, its label, and its `series`. Change the label, or set `series` to a new string, to start a fresh line. The trace keeps the latest 600 samples.
 
 `done` and `computing` ride along on `getStatus()`. They drive the run. They are not pieces, and the top bar does not have them.
 
@@ -137,21 +141,23 @@ aside: [{ type: 'metric', id: 'radius', label: 'Radius', value: radius }],
 toolbar: () => [...host.transport(), { type: 'readout', id: 'radius', label: 'Radius', value: String(radius) }],
 ```
 
-A sim that never calls those leaves them unused. Omitting `toolbar()` still leaves the top bar empty. The shell shows the seed there either way. The address is the path: the sim id, the seed, and any param that differs from its default. An old `#/id` link still opens, and the shell rewrites it to the path. The speed slider maps 0–1000 onto 0.5–240 steps per second, and a fresh page starts at 8. Switching to another sim starts at 8 again. Replay and Restart keep the speed set for this one.
+A sim that never calls those leaves them unused. Omitting `toolbar()` still leaves the top bar empty. The shell shows the seed there, and the address is the path: the sim id, the seed, and any param that differs from its default. Opening that address again plays the same run. `chrome: { seed: false }` means the sim owns the seed. The shell hides it, leaves it out of the address, and calls `reset` with no seed. Roll one inside the sim with `randomSeed()` if you need one. An old `#/id` link still opens, and the shell rewrites it to the path. The speed slider maps 0–1000 onto 0.5–240 steps per second, and a fresh page starts at 8. Switching to another sim starts at 8 again. Replay and Restart keep the speed set for this one.
 
 A button may set `pressed: true`. Add `toggle: true` for the highlighted pressed style. `shortcut` adds a key and a hint. The hint line joins every shortcut from both bars. `repeat: true` keeps firing while the key is held.
 
 ## Long runs
 
-One visible event per `step`. Hold that event as pending and draw it with `alpha`, from 0 up to 1, until `step` commits it. The pulse sample above does this for the next ring: the committed radius plus `alpha` is what is on screen. `span` on the status shortens that wait: `0.5` commits halfway through a step, and `alpha` still covers the whole event. Omit it for a full step.
+One visible event per `step`. Hold that event as pending and draw it with `alpha`, from 0 up to 1, until `step` commits it. The pulse sample above does this for the next ring: the committed radius plus `alpha` is what is on screen. `span` is how many speed ticks that event lasts. `0.5` commits halfway through a step. `3` holds the clock for three steps, and `alpha` still runs from 0 to 1 across all three. Omit it for one step. A value that is not finite, not positive, or above 8 counts as one step.
 
-Set `computing` while the step has nothing to draw yet, such as a search between two visible events. The shell then runs a burst of about 12ms, at most 500 steps, and draws with `alpha` 0. The search does not freeze the page, and it does not play an empty slide.
+Set `computing` while the step has nothing to draw yet, such as a search between two visible events. The shell then runs a burst of about 12ms, at most 500 steps, and draws with `alpha` 0. The search does not freeze the page, and it does not play an empty step. `span` is ignored while `computing` is set.
+
+After `done`, the shell keeps calling `render` every frame, and `alpha` stays 0. A flourish can finish on wall-clock time. The run does not step again.
 
 `reset` must return in a few milliseconds. Mount calls it before the loop starts, and a restart paints `render(0)` in the same turn so the old frame does not linger. A loading bar for slow setup is a later phase: `computing: true`, a `progress` piece, and `step` advances it. Work left inside `reset` cannot show that bar, because the bar paints only after `reset` returns.
 
 ## Shell slots
 
-Config is on when `params` has at least one key. `chrome: { params: false }` hides it anyway.
+Config is on when `params` has at least one key. `chrome: { params: false }` hides it anyway. `chrome: { seed: false }` leaves the seed to the sim. `reset` then receives no seed.
 
 ## Params
 
@@ -164,3 +170,20 @@ Each entry is a `number`, a `boolean`, or a `select`.
 - `available(option, params)` returns `true` to keep a choice selectable. A string, or `{ note, detail }`, keeps it in the list but grayed out. `note` is appended to the label.
 
 `normalize(params)` may rewrite the bag before a run starts and after each edit. Use it when one setting makes another illegal.
+
+## When the shell gets in the way
+
+The shell is one contract for every simulation. A change to it applies to all of them, in the same way. It does not grow a special case for one sim.
+
+When that contract is genuinely in the way, write it down. A person carries the note to the harness, and the harness changes the rule from that note. Put the note at `docs/harness-friction-<id>.md`. The harness replies at `docs/harness-reply-<id>.md`. Read that, then update the sim. The harness does not edit the sim.
+
+Write one when you cannot do what the sim is for without fighting the rule, and the fix is a rule every sim could live under. Skip it when the sim can follow the contract, when you want a private exception, or when you are describing a need some other sim might have later.
+
+Say four things, and no more than that:
+
+- What you were doing.
+- What the contract does that blocks it.
+- What you did instead, if the sim had to ship anyway.
+- The rule you want instead. Name the behavior every sim would get. Leave your sim out of that sentence.
+
+One problem per request. When the sim no longer needs the change, including because you found a way to follow the contract, say there is nothing to do. An old complaint should not be built by mistake.

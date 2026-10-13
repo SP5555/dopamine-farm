@@ -38,7 +38,7 @@ export function createRng(seed: number): Rng {
   };
 }
 
-/** The only unseeded randomness in the app. Used when a run starts, never inside a sim. */
+/** Unseeded. The shell uses it when a run starts. A sim with an internal seed may use it too. */
 export function randomSeed(): number {
   return Math.floor(Math.random() * 4294967296);
 }

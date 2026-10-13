@@ -13,6 +13,11 @@ export interface SimMeta {
 export interface SimChrome {
   /** Config panel. On when the schema has a param, unless this says otherwise. */
   params?: boolean;
+  /**
+   * Seed in the top bar and the address. On by default.
+   * Off means the sim owns the seed: the shell does not roll one, and `reset` is called without one.
+   */
+  seed?: boolean;
 }
 
 export interface BarShortcut {
@@ -61,7 +66,7 @@ export type BarPiece =
   | { type: 'label'; id: string; text: string }
   | { type: 'progress'; id: string; value: number | null }
   | { type: 'readout'; id: string; label: string; value: string }
-  | { type: 'metric'; id: string; label: string; value: number };
+  | { type: 'metric'; id: string; label: string; value: number; series?: string };
 
 /**
  * What the shell can do for a sim. The sim decides which of these to call,
@@ -71,7 +76,7 @@ export interface SimHost {
   readonly paused: boolean;
   readonly speed: number;
   readonly autoRestart: boolean;
-  /** Seed of the run on screen. The shell also shows this in the top bar. */
+  /** Seed of the run on screen, when the shell owns it. Unused when `chrome.seed` is off. */
   readonly seed: number;
   setPaused(paused: boolean): void;
   togglePaused(): void;
@@ -156,9 +161,10 @@ export interface SimStatus {
    */
   computing?: boolean;
   /**
-   * Length of the event on screen, as a fraction of one step. Omitted means 1.
-   * `alpha` still runs from 0 to 1 across that fraction, and the next event
-   * starts when it ends. Ignored while `computing` is set.
+   * How many speed ticks this event lasts. `1` is one step. `0.5` ends halfway through a step.
+   * `3` holds the clock for three steps, and `alpha` still runs from 0 to 1 across all three.
+   * Omitted means 1. Non-finite values, and values above 8, also count as 1.
+   * Ignored while `computing` is set.
    */
   span?: number;
   /** Left side of the footer, in order. Any bar piece. */
@@ -171,8 +177,8 @@ export interface SimStatus {
 }
 
 export interface SimInstance<P extends Params = Params> {
-  /** Starts a run. Return quickly. Slow setup is a later phase with `computing` set. */
-  reset(params: P, seed: number): void;
+  /** Starts a run. Return quickly. Slow setup is a later phase with `computing` set. The seed is omitted when the sim owns it. */
+  reset(params: P, seed?: number): void;
   step(): void;
   render(alpha: number): void;
   getStatus(): SimStatus;

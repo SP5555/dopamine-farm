@@ -91,7 +91,7 @@ export function createApp(root: HTMLElement): App {
   let lastRoute = '';
 
   const nav = createNav(navRoot, metas, (id) => {
-    void mount(id, randomSeed(), {}, true);
+    void mount(id, null, {}, true);
   });
   const statusBar = createStatusBar(statusRoot, banner);
   const topBar = createBar(piecesRoot);
@@ -181,7 +181,7 @@ export function createApp(root: HTMLElement): App {
     const route = parseRoute(current);
     if (!route.simId || !metaById.has(route.simId)) return;
     lastRoute = current;
-    void mount(route.simId, route.seed ?? randomSeed(), route.params, true);
+    void mount(route.simId, route.seed, route.params, true);
   };
 
   window.addEventListener('keydown', onKeyDown);
@@ -196,7 +196,7 @@ export function createApp(root: HTMLElement): App {
     // Older links used #/id. The address is the path now.
     const route = parseRoute(location.hash.startsWith('#/') ? location.hash : `${location.pathname}${location.search}`);
     const initial = route.simId && metaById.has(route.simId) ? route.simId : metas[0]!.id;
-    const initialSeed = route.simId === initial && route.seed !== null ? route.seed : randomSeed();
+    const initialSeed = route.simId === initial ? route.seed : null;
     const initialQuery = route.simId === initial ? route.params : {};
     void mount(initial, initialSeed, initialQuery, true);
   }
@@ -215,7 +215,7 @@ export function createApp(root: HTMLElement): App {
 
   async function mount(
     id: string,
-    nextSeed: number,
+    nextSeed: number | null,
     query: Record<string, string>,
     play: boolean,
   ): Promise<void> {
@@ -227,7 +227,7 @@ export function createApp(root: HTMLElement): App {
     unmountSim();
     showEmpty('');
     empty.hidden = true;
-    seed = nextSeed >>> 0;
+    seed = 0;
     setChrome(meta, true);
     topBar.setEnabled(false);
     statusBar.setEnabled(false);
@@ -244,6 +244,7 @@ export function createApp(root: HTMLElement): App {
 
     const schema = sim.params;
     const chrome = resolveChrome(sim);
+    if (chrome.seed) seed = (nextSeed ?? randomSeed()) >>> 0;
     const params = applyQuery(schema, query);
     sim.normalize?.(params);
     const canvas = document.createElement('canvas');
@@ -259,7 +260,8 @@ export function createApp(root: HTMLElement): App {
       },
       host,
     );
-    instance.reset(params, seed);
+    if (chrome.seed) instance.reset(params, seed);
+    else instance.reset(params);
 
     const resize = () => {
       const next = measure(canvasHost);
@@ -341,20 +343,26 @@ export function createApp(root: HTMLElement): App {
   }
 
   function restartRun(): void {
-    beginRun(randomSeed());
+    if (!mounted) return;
+    beginRun(mounted.chrome.seed ? randomSeed() : null);
   }
 
   function replayRun(): void {
-    beginRun(seed);
+    if (!mounted) return;
+    beginRun(mounted.chrome.seed ? seed : null);
   }
 
-  function beginRun(nextSeed: number): void {
+  function beginRun(nextSeed: number | null): void {
     if (!mounted) return;
     clearRestart();
     topBar.clear();
     statusBar.clear();
-    seed = nextSeed >>> 0;
-    mounted.instance.reset(mounted.params, seed);
+    if (mounted.chrome.seed) {
+      seed = (nextSeed ?? randomSeed()) >>> 0;
+      mounted.instance.reset(mounted.params, seed);
+    } else {
+      mounted.instance.reset(mounted.params);
+    }
     writeRoute();
     wantPlay = true;
     loop.setPaused(false);
@@ -397,8 +405,9 @@ export function createApp(root: HTMLElement): App {
   }
 
   function syncSeed(): void {
-    seedReadout.hidden = mounted === null;
-    seedReadout.textContent = mounted ? `seed ${seed}` : '';
+    const show = mounted !== null && mounted.chrome.seed;
+    seedReadout.hidden = !show;
+    seedReadout.textContent = show ? `seed ${seed}` : '';
   }
 
   function applyShell(chrome: ResolvedChrome): void {
@@ -483,7 +492,7 @@ export function createApp(root: HTMLElement): App {
   function writeRoute(): void {
     if (!mounted) return;
     window.clearTimeout(routeTimer);
-    const next = buildRoute(mounted.id, seed, mounted.schema, mounted.params);
+    const next = buildRoute(mounted.id, seed, mounted.schema, mounted.params, mounted.chrome.seed);
     const current = `${location.pathname}${location.search}`;
     // A leftover #/id still needs replacing, even when the path already matches.
     if (current === next && location.hash === '') {

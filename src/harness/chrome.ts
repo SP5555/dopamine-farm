@@ -7,5 +7,6 @@ export function resolveChrome(module: Pick<SimModule, 'chrome' | 'params'>): Res
   const hasParams = Object.keys(module.params).length > 0;
   return {
     params: declared.params ?? hasParams,
+    seed: declared.seed ?? true,
   };
 }

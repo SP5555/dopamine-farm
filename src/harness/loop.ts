@@ -14,11 +14,13 @@ export interface FrameInfo {
 const MAX_STEPS = 500;
 const FRAME_BUDGET_MS = 12;
 export const DEFAULT_SPEED = 8;
+/** Longest event, in speed ticks. Anything longer counts as one tick. */
+export const SPAN_MAX = 8;
 
-/** Fraction of a step the event on screen occupies. Omitted or out of range is a full step. */
-function eventSpan(status: SimStatus): number {
+/** How many speed ticks the event on screen lasts. Omitted, non-finite, or above the cap is one tick. */
+export function eventSpan(status: SimStatus): number {
   const span = status.span;
-  if (typeof span !== 'number' || !(span > 0) || span > 1) return 1;
+  if (typeof span !== 'number' || !(span > 0) || span > SPAN_MAX) return 1;
   return span;
 }
 

@@ -41,6 +41,15 @@ describe('router', () => {
     expect(route.params.showNumbers).toBeUndefined();
   });
 
+  it('omits the seed when the sim keeps it internal', () => {
+    const path = buildRoute('demo', 17, schema, { size: '4', showNumbers: true, weight: 2 }, false);
+    expect(path).toBe('/demo');
+    expect(parseRoute(path).seed).toBeNull();
+    const sized = buildRoute('demo', 17, schema, { size: '3', showNumbers: true, weight: 2 }, false);
+    expect(parseRoute(sized).seed).toBeNull();
+    expect(parseRoute(sized).params.size).toBe('3');
+  });
+
   it('ignores an invalid seed', () => {
     expect(parseRoute('/demo?seed=nope').seed).toBeNull();
     expect(parseRoute('#/demo?seed=17').simId).toBe('demo');

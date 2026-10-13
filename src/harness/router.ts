@@ -29,13 +29,21 @@ export function parseRoute(value: string): Route {
   return { simId, seed, params };
 }
 
-export function buildRoute(simId: string, seed: number, schema: ParamSchema, params: Params): string {
+export function buildRoute(
+  simId: string,
+  seed: number,
+  schema: ParamSchema,
+  params: Params,
+  includeSeed = true,
+): string {
   const search = new URLSearchParams();
-  search.set('seed', String(seed >>> 0));
+  if (includeSeed) search.set('seed', String(seed >>> 0));
   for (const [key, def] of Object.entries(schema)) {
     const value = params[key];
     if (value === undefined || !differsFromDefault(def, value)) continue;
     search.set(key, serializeParam(def, value));
   }
-  return `/${encodeURIComponent(simId)}?${search.toString()}`;
+  const query = search.toString();
+  const path = `/${encodeURIComponent(simId)}`;
+  return query.length === 0 ? path : `${path}?${query}`;
 }

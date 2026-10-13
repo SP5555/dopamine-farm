@@ -12,4 +12,4 @@ export type {
   SimStatus,
   UnavailableChoice,
 } from './types';
-export { createRng, type Rng } from './rng';
+export { createRng, randomSeed, type Rng } from './rng';

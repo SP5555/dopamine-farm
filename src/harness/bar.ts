@@ -39,21 +39,21 @@ export function createBar(root: HTMLElement): Bar {
     return created;
   };
 
-  const pushSample = (id: string, value: number, stepped: boolean) => {
-    const spark = seriesFor(id);
+  const pushSample = (id: string, key: string, value: number, stepped: boolean) => {
+    const spark = seriesFor(key);
     if (!stepped && value === spark.last) return;
     spark.samples[spark.head] = value;
     spark.head = (spark.head + 1) % SPARK_CAPACITY;
     if (spark.count < SPARK_CAPACITY) spark.count += 1;
     spark.last = value;
-    drawSpark(id);
+    drawSpark(id, key);
   };
 
-  const drawSpark = (id: string) => {
+  const drawSpark = (id: string, key: string) => {
     const canvas = root.querySelector(`[data-spark="${CSS.escape(id)}"]`);
     if (!(canvas instanceof HTMLCanvasElement)) return;
     const ctx = canvas.getContext('2d');
-    const spark = series.get(id);
+    const spark = series.get(key);
     if (!ctx || !spark) return;
     const width = canvas.width;
     const height = canvas.height;
@@ -157,7 +157,7 @@ export function createBar(root: HTMLElement): Bar {
     const value = node.querySelector('.bar-metric-value');
     if (name) name.textContent = item.label;
     if (value) value.textContent = Number.isInteger(item.value) ? String(item.value) : item.value.toFixed(1);
-    pushSample(item.id, item.value, stepped);
+    pushSample(item.id, sparkKey(item), item.value, stepped);
   };
 
   const build = (item: BarPiece): HTMLElement => {
@@ -201,6 +201,13 @@ export function createBar(root: HTMLElement): Bar {
       for (const item of pieces) {
         const node = nodes.get(item.id);
         if (node) paint(item, node, stepped);
+      }
+      const live = new Set<string>();
+      for (const item of pieces) {
+        if (item.type === 'metric') live.add(sparkKey(item));
+      }
+      for (const key of series.keys()) {
+        if (!live.has(key)) series.delete(key);
       }
     },
     setEnabled(next) {
@@ -311,6 +318,10 @@ function elementFor(item: BarPiece): HTMLElement {
   spark.dataset['spark'] = item.id;
   metric.append(name, value, spark);
   return metric;
+}
+
+function sparkKey(item: { id: string; label: string; series?: string }): string {
+  return `${item.id}\0${item.label}\0${item.series ?? ''}`;
 }
 
 function sameKey(expected: string, actual: string): boolean {
