@@ -17,12 +17,15 @@ import type { Search } from './search';
  * one-cell pocket cannot accept a new tile. Pair runs do that for every
  * neighboring couple, and place one tile first only when the length is odd.
  * The final handful of cells
- * is solved exhaustively. Memory stays on the order of one row, not the
- * whole puzzle.
+ * is solved exhaustively. Each finished placement is handed back immediately,
+ * so those slides can play while later tiles are still unplaced.
+ * Memory stays on the order of one row, not the whole puzzle.
  */
 export type HumanOrder = 'rows' | 'inward';
 /** `tail` pairs only the last two cells. `runs` pairs the whole line, with one single tile first when the length is odd. */
 export type HumanPairing = 'tail' | 'runs';
+
+type PlacementHandler = (moves: readonly Move[], focus: readonly (readonly number[])[]) => void;
 
 const YIELD_EVERY = 2048;
 
@@ -32,7 +35,10 @@ export function createHumanSolver(
   order: HumanOrder = 'rows',
   pairing: HumanPairing = 'tail',
 ): Search {
-  const walk = walkHuman(start, size, order, pairing);
+  const ready: { moves: Move[]; focus: readonly (readonly number[])[] }[] = [];
+  const walk = walkHuman(start, size, order, pairing, (segmentMoves, segmentFocus) => {
+    ready.push({ moves: segmentMoves.slice(), focus: segmentFocus.map((tiles) => tiles.slice()) });
+  });
   let found = false;
   let failed = false;
   let finished = false;
@@ -43,7 +49,7 @@ export function createHumanSolver(
 
   return {
     step(maxNodes = YIELD_EVERY) {
-      if (finished) return;
+      if (finished || ready.length > 0) return;
       const started = performance.now();
       let spent = 0;
       while (spent < maxNodes && performance.now() - started < 4) {
@@ -62,10 +68,22 @@ export function createHumanSolver(
         }
         spent += next.value;
         nodes += next.value;
+        if (ready.length > 0) break;
       }
       elapsedMs += performance.now() - started;
     },
     solution: () => moves,
+    take() {
+      if (ready.length === 0) return null;
+      const takenMoves: Move[] = [];
+      const takenFocus: (readonly number[])[] = [];
+      for (const segment of ready) {
+        takenMoves.push(...segment.moves);
+        takenFocus.push(...segment.focus);
+      }
+      ready.length = 0;
+      return { moves: takenMoves, focus: takenFocus };
+    },
     focus: () => focus,
     get found() {
       return found;
@@ -113,6 +131,7 @@ function* walkHuman(
   size: number,
   order: HumanOrder,
   pairing: HumanPairing,
+  publish?: PlacementHandler,
 ): Generator<number, { moves: Move[] | null; nodes: number; focus: readonly (readonly number[])[] }> {
   const board = new Uint8Array(start);
   const frozen = new Uint8Array(board.length);
@@ -128,7 +147,7 @@ function* walkHuman(
     const pocket = yield* solvePocket(board, size, frozen);
     spend(pocket.nodes);
     if (!pocket.moves) return false;
-    commit(board, size, moves, focus, pocket.moves, looseTiles(board, frozen));
+    commit(board, size, moves, focus, pocket.moves, looseTiles(board, frozen), publish);
     return true;
   }
 
@@ -139,7 +158,7 @@ function* walkHuman(
   }
 
   function packed(): { moves: Move[]; nodes: number; focus: number[][] } {
-    return { ...compress(moves, focus), nodes };
+    return { moves, nodes, focus };
   }
 
   function* placeHomes(
@@ -150,8 +169,8 @@ function* walkHuman(
       if (done) return done;
       const placed =
         unit.length === 1
-          ? yield* placeTile(board, size, unit[0]!, frozen, moves, focus, spend)
-          : yield* placePair(board, size, unit[0]!, unit[1]!, frozen, moves, focus, spend);
+          ? yield* placeTile(board, size, unit[0]!, frozen, moves, focus, spend, publish)
+          : yield* placePair(board, size, unit[0]!, unit[1]!, frozen, moves, focus, spend, publish);
       if (!placed) return { moves: null, nodes, focus: [] };
     }
     return null;
@@ -215,11 +234,12 @@ function* placeTile(
   moves: Move[],
   focus: number[][],
   spend: (count: number) => void,
+  publish?: PlacementHandler,
 ): Generator<number, boolean> {
   const routed = yield* routeTile(board, size, goal + 1, goal, frozen);
   spend(routed.nodes);
   if (!routed.moves) return false;
-  commit(board, size, moves, focus, routed.moves, [goal + 1]);
+  commit(board, size, moves, focus, routed.moves, [goal + 1], publish);
   if (board[goal] !== goal + 1) return false;
   frozen[goal] = 1;
   return true;
@@ -234,6 +254,7 @@ function* placePair(
   moves: Move[],
   focus: number[][],
   spend: (count: number) => void,
+  publish?: PlacementHandler,
 ): Generator<number, boolean> {
   const tileA = goalA + 1;
   const tileB = goalB + 1;
@@ -245,7 +266,7 @@ function* placePair(
   const routed = yield* routePair(board, size, tileA, goalA, tileB, goalB, frozen);
   spend(routed.nodes);
   if (!routed.moves) return false;
-  commit(board, size, moves, focus, routed.moves, [tileA, tileB]);
+  commit(board, size, moves, focus, routed.moves, [tileA, tileB], publish);
   if (board[goalA] !== tileA || board[goalB] !== tileB) return false;
   frozen[goalA] = 1;
   frozen[goalB] = 1;
@@ -259,13 +280,22 @@ function commit(
   focus: number[][],
   extra: readonly Move[],
   tiles: readonly number[],
+  publish?: PlacementHandler,
 ): void {
   const mark = tiles.slice();
+  const segmentMoves: Move[] = [];
+  const segmentFocus: number[][] = [];
   for (const move of extra) {
     applyMove(board, move, size);
-    moves.push(move);
-    focus.push(mark);
+    segmentMoves.push(move);
+    segmentFocus.push(mark);
   }
+  const kept = compress(segmentMoves, segmentFocus);
+  for (let index = 0; index < kept.moves.length; index += 1) {
+    moves.push(kept.moves[index]!);
+    focus.push(kept.focus[index]!);
+  }
+  if (kept.moves.length > 0) publish?.(kept.moves, kept.focus);
 }
 
 function looseTiles(board: Uint8Array, frozen: Uint8Array): number[] {

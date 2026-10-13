@@ -73,9 +73,7 @@ describe('sliding puzzle board', () => {
 
   it('builds a solvable uniform scramble and a walk that replays to the same board', () => {
     const uniform = uniformScramble(4, 9);
-    expect(uniform.frames).toHaveLength(20);
     expect(isSolvable(uniform.finalBoard, 4)).toBe(true);
-    expect(uniform.frames[19]).toEqual(uniform.finalBoard);
 
     const walk = walkScramble(3, 15, 4);
     const board = solvedBoard(3);

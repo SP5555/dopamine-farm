@@ -15,7 +15,7 @@ import {
   type Move,
 } from './board';
 import { formatCount, formatSeconds } from './format';
-import { drawPuzzle } from './render';
+import { drawPuzzle, paletteId, type PaletteId } from './render';
 import { uniformScramble, walkScramble } from './scramble';
 import { applyLegal, legalize, solverOptionAvailable, type SolverId } from './limits';
 import { createHumanSolver } from './solvers/human';
@@ -41,6 +41,19 @@ export const params: ParamSchema = {
     label: 'Numbers',
     default: true,
   },
+  palette: {
+    type: 'select',
+    label: 'Colors',
+    default: 'tide',
+    options: [
+      { value: 'tide', label: 'Tide', detail: 'Blues and teals, light across the top.' },
+      { value: 'ember', label: 'Ember', detail: 'Reds through gold, light across the top.' },
+      { value: 'moss', label: 'Moss', detail: 'Greens, light across the top.' },
+      { value: 'dusk', label: 'Dusk', detail: 'Violet through rose, light across the top.' },
+      { value: 'spectrum', label: 'Spectrum', detail: 'The full rainbow, from left to right.' },
+      { value: 'checker', label: 'Checkerboard', detail: 'Black and white squares, by home cell.' },
+    ],
+  },
   scramble: {
     type: 'select',
     label: 'Scramble',
@@ -55,7 +68,7 @@ export const params: ParamSchema = {
       {
         value: 'uniform',
         label: 'Uniform random',
-        detail: 'Picks any solvable board, including the hardest ones.',
+        detail: 'Picks any solvable board, including the hardest ones. Tiles travel from the solved grid to that board.',
       },
     ],
     group: 'Scrambler',
@@ -162,6 +175,7 @@ interface PuzzleParams {
   nodeBudget: number;
   animateScramble: boolean;
   showNumbers: boolean;
+  palette: PaletteId;
 }
 
 type Phase = 'scramble' | 'search' | 'play' | 'solved';
@@ -180,13 +194,12 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   let phase: Phase = 'scramble';
   let walkMoves: Move[] = [];
   let walkIndex = 0;
-  let uniformFrames: Uint8Array[] = [];
-  let uniformIndex = 0;
+  let travelSteps = 0;
+  let travelIndex = 0;
   let pendingMove: Move | null = null;
-  let fadeTo: Uint8Array | null = null;
   let search: Search | null = null;
   let solution: Move[] = [];
-  let focus: readonly (readonly number[])[] = [];
+  let focus: (readonly number[])[] = [];
   let playIndex = 0;
   let optimal = false;
   let fellBack = false;
@@ -199,17 +212,18 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   let message: string | undefined;
   let solvedAt = 0;
   let showNumbers = true;
+  let palette: PaletteId = 'tide';
 
   function reset(all: Params, _seed: number): void {
     settings = readParams(all);
     size = settings.size;
     showNumbers = settings.showNumbers;
+    palette = settings.palette;
     search = null;
     solution = [];
     focus = [];
     playIndex = 0;
     pendingMove = null;
-    fadeTo = null;
     fellBack = false;
     failed = false;
     baseNodes = 0;
@@ -220,19 +234,19 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     solvedAt = 0;
     walkMoves = [];
     walkIndex = 0;
-    uniformFrames = [];
-    uniformIndex = 0;
+    travelSteps = 0;
+    travelIndex = 0;
 
     const solved = solvedBoard(size);
     if (settings.scramble === 'uniform') {
       const uniform = uniformScramble(size, _seed);
       scrambled = uniform.finalBoard;
-      if (settings.animateScramble) {
+      if (settings.animateScramble && !reducedMotion) {
         phase = 'scramble';
-        uniformFrames = uniform.frames;
+        travelSteps = Math.max(16, size * 2);
+        travelIndex = 0;
         board = solved;
-        fadeTo = uniformFrames[0] ?? null;
-        metricValue = manhattan(board, size);
+        metricValue = 0;
       } else {
         board = new Uint8Array(scrambled);
         beginSearch();
@@ -256,7 +270,6 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   function beginSearch(): void {
     phase = 'search';
     pendingMove = null;
-    fadeTo = null;
     board = new Uint8Array(scrambled);
     metricValue = manhattan(board, size);
     if (settings.solver === 'ida') search = createIdaStar(scrambled, size, settings.nodeBudget);
@@ -271,7 +284,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     nodes = baseNodes + search.nodes;
     searchMs = baseMs + search.elapsedMs;
     solution = search.solution();
-    focus = search.focus?.() ?? [];
+    focus = [...(search.focus?.() ?? [])];
     search = null;
     optimal =
       !fellBack && (settings.solver === 'ida' || (settings.solver === 'wastar' && settings.weight === 1));
@@ -286,10 +299,27 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     pendingMove = solution[0] ?? null;
   }
 
+  function release(): boolean {
+    const taken = search?.take?.();
+    if (!taken || taken.moves.length === 0) return false;
+    for (let index = 0; index < taken.moves.length; index += 1) {
+      solution.push(taken.moves[index]!);
+      focus.push(taken.focus[index] ?? []);
+    }
+    if (pendingMove === null) pendingMove = solution[playIndex] ?? null;
+    if (pendingMove === null) return false;
+    phase = 'play';
+    return true;
+  }
+
   function finish(): void {
+    if (search) {
+      nodes = baseNodes + search.nodes;
+      searchMs = baseMs + search.elapsedMs;
+      search = null;
+    }
     phase = 'solved';
     pendingMove = null;
-    fadeTo = null;
     metricValue = manhattan(board, size);
     solvedAt = performance.now();
     failed = false;
@@ -299,7 +329,6 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   function fail(text: string): void {
     phase = 'solved';
     pendingMove = null;
-    fadeTo = null;
     failed = true;
     solvedAt = performance.now();
     message = text;
@@ -326,24 +355,24 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
       return;
     }
 
-    const frame = uniformFrames[uniformIndex];
-    if (!frame) {
-      beginSearch();
-      return;
-    }
-    board = new Uint8Array(frame);
-    uniformIndex += 1;
-    metricValue = manhattan(board, size);
-    if (uniformIndex >= uniformFrames.length) beginSearch();
-    else fadeTo = uniformFrames[uniformIndex] ?? null;
+    travelIndex += 1;
+    const distance = manhattan(scrambled, size);
+    metricValue = Math.round(distance * Math.min(1, travelIndex / travelSteps));
+    if (travelIndex >= travelSteps) beginSearch();
   }
 
   function stepSearch(): void {
     if (!search) return;
+    if (release()) return;
     search.step(SEARCH_CHUNK);
     nodes = baseNodes + search.nodes;
     searchMs = baseMs + search.elapsedMs;
     if (search.found) {
+      if (release()) return;
+      if (search.take) {
+        finish();
+        return;
+      }
       beginPlayback();
       return;
     }
@@ -361,14 +390,26 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
 
   function stepPlay(): void {
     if (pendingMove === null) {
-      finish();
+      settlePlay();
       return;
     }
     applyMove(board, pendingMove, size);
     playIndex += 1;
     pendingMove = solution[playIndex] ?? null;
     metricValue = manhattan(board, size);
-    if (pendingMove === null) finish();
+    if (pendingMove === null) settlePlay();
+  }
+
+  function settlePlay(): void {
+    if (search?.take && !search.found && !search.failed && !search.aborted) {
+      phase = 'search';
+      return;
+    }
+    if (search?.failed) {
+      fail('No solution found.');
+      return;
+    }
+    finish();
   }
 
   function render(alpha: number): void {
@@ -382,7 +423,11 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
       pendingMove,
       alpha,
       showNumbers,
-      fadeTo: phase === 'scramble' ? fadeTo : null,
+      palette,
+      travel:
+        phase === 'scramble' && settings.scramble === 'uniform' && travelSteps > 0
+          ? { board: scrambled, progress: (travelIndex + alpha) / travelSteps }
+          : null,
       solvedAt: phase === 'solved' && !failed ? solvedAt : 0,
       reducedMotion,
       focusTiles: phase === 'play' ? (focus[playIndex] ?? []) : [],
@@ -403,8 +448,8 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     ];
 
     if (phase === 'scramble') {
-      const total = settings.scramble === 'walk' ? walkMoves.length : uniformFrames.length;
-      const cursor = settings.scramble === 'walk' ? walkIndex : uniformIndex;
+      const total = settings.scramble === 'walk' ? walkMoves.length : travelSteps;
+      const cursor = settings.scramble === 'walk' ? walkIndex : travelIndex;
       return {
         done: false,
         note: message,
@@ -413,7 +458,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
           { type: 'progress', id: 'progress', value: total === 0 ? 0 : cursor / total },
           manhattan,
         ],
-        aside: [{ type: 'readout', id: 'move', label: 'move', value: `${cursor}/${total}` }],
+        aside: settings.scramble === 'walk' ? [{ type: 'readout', id: 'move', label: 'move', value: `${cursor}/${total}` }] : [],
       };
     }
 
@@ -434,6 +479,9 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
         aside: [
           { type: 'readout', id: 'nodes', label: 'nodes', value: formatCount(nodes) },
           { type: 'readout', id: 'rate', label: 'nodes/s', value: seconds > 0.05 ? formatCount(rate) : '—' },
+          ...(playIndex > 0
+            ? [{ type: 'readout' as const, id: 'moves', label: 'moves', value: String(playIndex) }]
+            : []),
           ...(search.bound !== null
             ? [{ type: 'readout' as const, id: 'bound', label: 'bound', value: String(search.bound) }]
             : []),
@@ -446,12 +494,17 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     }
 
     if (phase === 'play') {
+      const totalKnown = !search?.take || search.found;
       const left = solution.length - playIndex;
       const row: BarPiece[] = [
         { type: 'label', id: 'phase', text: 'Playing' },
-        { type: 'progress', id: 'progress', value: solution.length === 0 ? 1 : playIndex / solution.length },
+        {
+          type: 'progress',
+          id: 'progress',
+          value: !totalKnown || solution.length === 0 ? null : playIndex / solution.length,
+        },
       ];
-      if (left > 0 && host.speed > 0) {
+      if (totalKnown && left > 0 && host.speed > 0) {
         row.push({ type: 'readout', id: 'left', label: 'left', value: formatRemaining(left / host.speed) });
       }
       row.push(manhattan);
@@ -460,7 +513,12 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
         note: message,
         row,
         aside: [
-          { type: 'readout', id: 'moves', label: 'moves', value: `${playIndex}/${solution.length}` },
+          {
+            type: 'readout',
+            id: 'moves',
+            label: 'moves',
+            value: totalKnown ? `${playIndex}/${solution.length}` : String(playIndex),
+          },
           { type: 'readout', id: 'optimal', label: 'optimal', value: optimal ? 'yes' : 'no' },
           { type: 'readout', id: 'solver', label: 'solver', value: solverLabel() },
           { type: 'readout', id: 'nodes', label: 'nodes', value: formatCount(nodes) },
@@ -498,8 +556,9 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     toolbar,
     setParams(_changed, all) {
       const next = readParams(all);
-      settings = { ...settings, showNumbers: next.showNumbers };
+      settings = { ...settings, showNumbers: next.showNumbers, palette: next.palette };
       showNumbers = next.showNumbers;
+      palette = next.palette;
     },
     resize(nextWidth, nextHeight, nextDpr) {
       width = nextWidth;
@@ -531,6 +590,7 @@ function readParams(all: Params): PuzzleParams {
     nodeBudget: clamp(Math.round(numberParam(all.nodeBudget, 2e7)), 1e6, 5e7),
     animateScramble: Boolean(all.animateScramble),
     showNumbers: Boolean(all.showNumbers),
+    palette: paletteId(typeof all.palette === 'string' ? all.palette : undefined),
   };
 }
 

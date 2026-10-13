@@ -148,6 +148,29 @@ describe('sliding puzzle solvers', () => {
     }
   });
 
+  it('hands each placement back before the walk finishes', () => {
+    const board = walkScramble(5, 40, 1).finalBoard;
+    const search = createHumanSolver(board, 5, 'rows', 'runs');
+    const moves: Move[] = [];
+    let early = false;
+    let steps = 0;
+    while (!search.found && !search.failed) {
+      search.step(5000);
+      const taken = search.take?.();
+      if (taken) {
+        if (!search.found) early = true;
+        moves.push(...taken.moves);
+      }
+      if (++steps > 200_000) throw new Error('search did not finish');
+    }
+    const last = search.take?.();
+    if (last) moves.push(...last.moves);
+    expect(early).toBe(true);
+    expect(search.found).toBe(true);
+    expect(moves).toEqual(search.solution());
+    expect(replay(board, moves, 5)).toBe(true);
+  });
+
   it('solves with pair runs and uses fewer moves than one-tile placement', () => {
     for (const order of ['rows', 'inward'] as const) {
       for (const size of [5, 6, 8]) {
@@ -194,9 +217,11 @@ describe('sliding puzzle solvers', () => {
 function solve(search: Search, chunk = 5000): Search {
   let steps = 0;
   while (!search.found && !search.aborted && !search.failed) {
+    search.take?.();
     search.step(chunk);
     if (++steps > 200_000) throw new Error('search did not finish');
   }
+  search.take?.();
   return search;
 }
 

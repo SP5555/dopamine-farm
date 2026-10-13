@@ -9,7 +9,9 @@ export interface DrawState {
   pendingMove: Move | null;
   alpha: number;
   showNumbers: boolean;
-  fadeTo: Uint8Array | null;
+  palette: PaletteId;
+  /** Tiles glide from the solved grid toward this board. `progress` runs from 0 to 1. */
+  travel: { board: Uint8Array; progress: number } | null;
   solvedAt: number;
   reducedMotion: boolean;
   focusTiles: readonly number[];
@@ -34,6 +36,14 @@ const HOME_BORDER = '#ffffff';
 const FOCUS_BORDER = '#ff2436';
 const FOCUS_PULSE_MS = 1800;
 
+export const PALETTES = ['tide', 'ember', 'moss', 'dusk', 'spectrum', 'checker'] as const;
+export type PaletteId = (typeof PALETTES)[number];
+
+export function paletteId(value: string | undefined): PaletteId {
+  for (const id of PALETTES) if (id === value) return id;
+  return 'tide';
+}
+
 export function drawPuzzle(ctx: CanvasRenderingContext2D, state: DrawState): void {
   const { width, height, dpr } = state;
   if (width < 2 || height < 2) return;
@@ -46,14 +56,8 @@ export function drawPuzzle(ctx: CanvasRenderingContext2D, state: DrawState): voi
   drawPlate(ctx, layout);
   const alpha = clamp01(state.alpha);
 
-  if (state.fadeTo) {
-    drawTiles(ctx, state.board, state.size, layout, state.showNumbers, null, 0, state.focusTiles, state.reducedMotion);
-    if (alpha > 0) {
-      ctx.save();
-      ctx.globalAlpha = ease(alpha);
-      drawTiles(ctx, state.fadeTo, state.size, layout, state.showNumbers, null, 0, state.focusTiles, state.reducedMotion);
-      ctx.restore();
-    }
+  if (state.travel) {
+    drawTravel(ctx, state.travel.board, state.size, layout, state.showNumbers, state.palette, state.travel.progress);
   } else {
     drawTiles(
       ctx,
@@ -61,6 +65,7 @@ export function drawPuzzle(ctx: CanvasRenderingContext2D, state: DrawState): voi
       state.size,
       layout,
       state.showNumbers,
+      state.palette,
       state.pendingMove,
       alpha,
       state.focusTiles,
@@ -103,12 +108,75 @@ function drawPlate(ctx: CanvasRenderingContext2D, layout: Layout): void {
   ctx.fill();
 }
 
+function drawTravel(
+  ctx: CanvasRenderingContext2D,
+  board: Uint8Array,
+  size: number,
+  layout: Layout,
+  showNumbers: boolean,
+  palette: PaletteId,
+  progress: number,
+): void {
+  const cells = size * size;
+  const target = new Int32Array(cells);
+  for (let index = 0; index < cells; index += 1) target[board[index]!] = index;
+  const fontSize = labelFontSize(ctx, layout.tile, size);
+  const along = clamp01(progress);
+  const flying: { tile: number; origin: { x: number; y: number }; home: number; lift: number }[] = [];
+  for (let tile = 1; tile < cells; tile += 1) {
+    const from = tile - 1;
+    const to = target[tile]!;
+    const start = ringDeparture(from, size);
+    const eased = ease(clamp01((along - start) / 0.45));
+    flying.push({
+      tile,
+      origin: arcOrigin(layout, from, to, eased),
+      home: to === from ? 1 : 1 - eased,
+      lift: Math.sin(Math.PI * eased),
+    });
+  }
+  flying.sort((a, b) => a.lift - b.lift);
+  for (const tile of flying) {
+    paintTile(ctx, layout, tile.tile, size, palette, tile.origin, showNumbers, fontSize, tile.home, false);
+  }
+}
+
+/** Center tiles leave first, corners last, across the first part of the glide. */
+function ringDeparture(cell: number, size: number): number {
+  const col = cell % size;
+  const row = Math.floor(cell / size);
+  const center = (size - 1) / 2;
+  const dist = Math.hypot(col - center, row - center);
+  const max = Math.hypot(center, center) || 1;
+  return (dist / max) * 0.55;
+}
+
+function arcOrigin(
+  layout: Layout,
+  from: number,
+  to: number,
+  eased: number,
+): { x: number; y: number } {
+  const start = cellOrigin(layout, from);
+  const end = cellOrigin(layout, to);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  const lift = Math.sin(Math.PI * eased) * layout.cell * 0.22;
+  if (length < 0.001) return start;
+  return {
+    x: start.x + dx * eased + (-dy / length) * lift,
+    y: start.y + dy * eased + (dx / length) * lift,
+  };
+}
+
 function drawTiles(
   ctx: CanvasRenderingContext2D,
   board: Uint8Array,
   size: number,
   layout: Layout,
   showNumbers: boolean,
+  palette: PaletteId,
   pendingMove: Move | null,
   alpha: number,
   focusTiles: readonly number[],
@@ -119,7 +187,7 @@ function drawTiles(
   const focus = new Set(focusTiles);
   const wave = focusWave(reducedMotion);
   for (const tile of placed) {
-    paintTile(ctx, layout, tile.tile, size, tile.origin, showNumbers, fontSize, tile.home, focus.has(tile.tile));
+    paintTile(ctx, layout, tile.tile, size, palette, tile.origin, showNumbers, fontSize, tile.home, focus.has(tile.tile));
   }
   for (const tile of placed) {
     if (focus.has(tile.tile)) drawFocus(ctx, layout, tile.origin, wave);
@@ -210,13 +278,14 @@ function paintTile(
   layout: Layout,
   tile: number,
   size: number,
+  palette: PaletteId,
   origin: { x: number; y: number },
   showNumbers: boolean,
   fontSize: number,
   home: number,
   focused: boolean,
 ): void {
-  const color = tileColor(size, tile);
+  const color = tileColor(size, tile, palette);
   ctx.beginPath();
   ctx.roundRect(origin.x, origin.y, layout.tile, layout.tile, layout.radius);
   ctx.fillStyle = color.fill;
@@ -225,7 +294,7 @@ function paintTile(
     ctx.save();
     ctx.clip();
     ctx.globalAlpha *= home;
-    ctx.strokeStyle = HOME_BORDER;
+    ctx.strokeStyle = color.edge;
     ctx.lineWidth = Math.max(2, Math.round(layout.tile * 0.028)) * 2;
     ctx.stroke();
     ctx.restore();
@@ -301,23 +370,58 @@ function cellOrigin(layout: Layout, index: number): { x: number; y: number } {
   };
 }
 
-const colorCache = new Map<string, { fill: string; text: string }>();
+const colorCache = new Map<string, { fill: string; text: string; edge: string }>();
 
-function tileColor(size: number, tile: number): { fill: string; text: string } {
-  const key = `${size}:${tile}`;
+interface Ramp {
+  hue: number;
+  hueSpan: number;
+  light: number;
+  lightDrop: number;
+  chroma: number;
+  chromaLift: number;
+}
+
+const RAMPS: Record<Exclude<PaletteId, 'spectrum' | 'checker'>, Ramp> = {
+  tide: { hue: 198, hueSpan: 52, light: 0.76, lightDrop: 0.32, chroma: 0.1, chromaLift: 0.035 },
+  ember: { hue: 22, hueSpan: 40, light: 0.74, lightDrop: 0.3, chroma: 0.13, chromaLift: 0.025 },
+  moss: { hue: 118, hueSpan: 36, light: 0.74, lightDrop: 0.3, chroma: 0.115, chromaLift: 0.03 },
+  dusk: { hue: 282, hueSpan: 48, light: 0.7, lightDrop: 0.26, chroma: 0.115, chromaLift: 0.03 },
+};
+
+function tileColor(size: number, tile: number, palette: PaletteId): { fill: string; text: string; edge: string } {
+  const key = `${palette}:${size}:${tile}`;
   const cached = colorCache.get(key);
   if (cached) return cached;
   const goal = tile - 1;
   const row = Math.floor(goal / size);
   const col = goal % size;
+  if (palette === 'checker') {
+    const dark = (row + col) % 2 === 1;
+    const value = dark
+      ? { fill: '#1c1e26', text: '#f6f1e8', edge: HOME_BORDER }
+      : { fill: '#f3efe6', text: '#24180f', edge: '#1c1e26' };
+    colorCache.set(key, value);
+    return value;
+  }
   const x = size === 1 ? 0 : col / (size - 1);
   const y = size === 1 ? 0 : row / (size - 1);
-  const hue = 32 + x * 248;
-  const light = 0.8 - y * 0.34;
-  const chroma = 0.11 + (1 - y) * 0.035;
+  let hue: number;
+  let light: number;
+  let chroma: number;
+  if (palette === 'spectrum') {
+    hue = 32 + x * 248;
+    light = 0.8 - y * 0.34;
+    chroma = 0.11 + (1 - y) * 0.035;
+  } else {
+    const ramp = RAMPS[palette];
+    hue = ramp.hue + x * ramp.hueSpan;
+    light = ramp.light - y * ramp.lightDrop;
+    chroma = ramp.chroma + (1 - y) * ramp.chromaLift;
+  }
   const value = {
     fill: `oklch(${light.toFixed(3)} ${chroma.toFixed(3)} ${hue.toFixed(1)})`,
-    text: light > 0.62 ? '#24180f' : '#f6f1e8',
+    text: light > 0.55 ? '#24180f' : '#f6f1e8',
+    edge: HOME_BORDER,
   };
   colorCache.set(key, value);
   return value;

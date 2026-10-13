@@ -8,11 +8,8 @@ export interface WalkScramble {
 }
 
 export interface UniformScramble {
-  frames: Uint8Array[];
   finalBoard: Uint8Array;
 }
-
-const UNIFORM_FRAMES = 20;
 
 export function walkScramble(size: number, length: number, seed: number): WalkScramble {
   const rng = createRng(seed);
@@ -30,15 +27,9 @@ export function walkScramble(size: number, length: number, seed: number): WalkSc
   return { moves, finalBoard: board };
 }
 
+/** One solvable board, chosen evenly from every solvable board. */
 export function uniformScramble(size: number, seed: number): UniformScramble {
-  const rng = createRng(seed);
-  const finalBoard = randomSolvable(size, rng);
-  const frames: Uint8Array[] = [];
-  for (let index = 0; index < UNIFORM_FRAMES - 1; index += 1) {
-    frames.push(randomPermutation(size, rng));
-  }
-  frames.push(new Uint8Array(finalBoard));
-  return { frames, finalBoard };
+  return { finalBoard: randomSolvable(size, createRng(seed)) };
 }
 
 function randomSolvable(size: number, rng: Rng): Uint8Array {

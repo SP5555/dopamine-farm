@@ -1,6 +1,6 @@
 # Sliding puzzle
 
-Optimal (IDA*) and Fast (weighted A*) run through 4×4. Each Fast node keeps a full board, so larger sizes exhaust memory. From 5×5 up, one places tiles one at a time and the other places them two at a time. Both can finish a row at a time, or a row and then the column beside it.
+Optimal (IDA*) and Fast (weighted A*) run through 4×4. Each Fast node keeps a full board, so larger sizes exhaust memory. From 5×5 up, one places tiles one at a time and the other places them two at a time. Both slide each placement as soon as those tiles are seated, and the move total appears when that walk finishes. Optimal and Fast still plan the whole path first. Both tile solvers can finish a row at a time, or a row and then the column beside it.
 
 The search heuristic is Manhattan distance plus linear conflict. A conflict is two tiles already in their goal row or column but in the wrong order. Each one adds 2, which stays admissible, so IDA* can still claim a shortest solution. If IDA* crosses its node budget it switches to weighted A* at weight 2 and says so.
 
