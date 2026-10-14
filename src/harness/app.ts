@@ -98,8 +98,8 @@ export function createApp(root: HTMLElement): App {
   let autoOn = false;
 
   const loop = createLoop({
-    step() {
-      mounted?.instance.step();
+    step(dt) {
+      mounted?.instance.step(dt);
     },
     render(alpha) {
       mounted?.instance.render(alpha);
@@ -114,6 +114,9 @@ export function createApp(root: HTMLElement): App {
     },
     get speed() {
       return loop.speed;
+    },
+    get pace() {
+      return mounted?.chrome.pace ?? 'step';
     },
     get autoRestart() {
       return autoOn;
@@ -318,6 +321,7 @@ export function createApp(root: HTMLElement): App {
     wantPlay = play;
     loop.setPaused(!play);
     restartClock();
+    loop.setPace(chrome.pace);
     loop.restartTiming();
     loop.start();
     syncToolbar(false);
@@ -333,6 +337,7 @@ export function createApp(root: HTMLElement): App {
     clearRestart();
     window.clearTimeout(routeTimer);
     loop.stop();
+    loop.setPace('step');
     if (!mounted) return;
     mounted.observer.disconnect();
     window.removeEventListener('resize', mounted.onWindowResize);

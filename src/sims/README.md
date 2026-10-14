@@ -155,9 +155,31 @@ After `done`, the shell keeps calling `render` every frame, and `alpha` stays 0.
 
 `reset` must return in a few milliseconds. Mount calls it before the loop starts, and a restart paints `render(0)` in the same turn so the old frame does not linger. A loading bar for slow setup is a later phase: `computing: true`, a `progress` piece, and `step` advances it. Work left inside `reset` cannot show that bar, because the bar paints only after `reset` returns.
 
+## The clock
+
+`render` runs on every frame the monitor paints. How often `step` runs is the part you choose.
+
+Leave `pace` off for one event per step. `step` runs at the speed slider, from 0.5 to 240 times per wall second, starting at 8. Draw the event in progress with `alpha`, from 0 up to 1. A faster monitor paints that in-between more often. It does not add steps.
+
+For a fixed rate, such as 60 a second, stay on that clock and call `host.setSpeed(60)`. Each `step` is one slice of your own size. `alpha` is still the in-between, so the picture follows the monitor. Leave the speed slider out of `toolbar()` when that rate must stay put. Showing `host.transport()` lets the viewer move it.
+
+`chrome: { pace: 'frame' }` steps once per painted frame. `step(dt)` receives the seconds since the previous frame, scaled so the default speed is realtime. Integrate `dt`. A faster monitor passes a smaller `dt` and covers the same world time per wall second. `alpha` stays 0 and `span` is ignored. The speed slider becomes a time scale, and 8 reads as 1×.
+
+```ts
+chrome: { pace: 'frame' },
+step(dt = 0) {
+  angle += turnRate * dt;
+},
+render() {
+  // Draw `angle`. This clock keeps alpha at 0.
+},
+```
+
+A gap longer than a quarter of a second is cut off there, on either clock.
+
 ## Shell slots
 
-Config is on when `params` has at least one key. `chrome: { params: false }` hides it anyway. `chrome: { seed: false }` leaves the seed to the sim. `reset` then receives no seed.
+Config is on when `params` has at least one key. `chrome: { params: false }` hides it anyway. `chrome: { seed: false }` leaves the seed to the sim. `reset` then receives no seed. `chrome: { pace: 'frame' }` is the display-rate clock above.
 
 ## Params
 

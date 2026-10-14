@@ -1,7 +1,7 @@
 import type { SimStatus } from './types';
 
 export interface LoopHooks {
-  step(): void;
+  step(dt?: number): void;
   render(alpha: number): void;
   getStatus(): SimStatus;
 }
@@ -29,6 +29,8 @@ export interface Loop {
   stop(): void;
   restartTiming(): void;
   setSpeed(stepsPerSecond: number): void;
+  /** `frame` steps once per displayed frame. `step` is the fixed clock. */
+  setPace(pace: 'step' | 'frame'): void;
   setPaused(paused: boolean): void;
   readonly paused: boolean;
   readonly speed: number;
@@ -42,6 +44,7 @@ export function createLoop(hooks: LoopHooks): Loop {
   let paused = false;
   let coast = false;
   let speed = DEFAULT_SPEED;
+  let pace: 'step' | 'frame' = 'step';
   let accumulator = 0;
   let last = 0;
   let pendingSteps = 0;
@@ -70,7 +73,33 @@ export function createLoop(hooks: LoopHooks): Loop {
     let snap = false;
     const begin = hooks.getStatus();
 
-    if (pendingSteps > 0) {
+    if (pace === 'frame') {
+      const manual = pendingSteps > 0;
+      if (begin.done) {
+        pendingSteps = 0;
+        paused = true;
+        snap = true;
+      } else if (!manual && paused) {
+        snap = true;
+      } else if (begin.computing === true) {
+        steps = burst();
+        snap = true;
+        if (manual) {
+          pendingSteps = 0;
+          paused = true;
+        }
+      } else if (dt > 0 || manual) {
+        hooks.step(dt * (speed / DEFAULT_SPEED));
+        steps = 1;
+        snap = true;
+        if (manual) {
+          pendingSteps = 0;
+          paused = true;
+        }
+      } else {
+        snap = true;
+      }
+    } else if (pendingSteps > 0) {
       // Play one step at the current speed, then hold. Same slide as playback.
       coast = false;
       if (begin.done) {
@@ -179,6 +208,12 @@ export function createLoop(hooks: LoopHooks): Loop {
     },
     setSpeed(stepsPerSecond: number) {
       speed = stepsPerSecond;
+    },
+    setPace(next) {
+      pace = next;
+      accumulator = 0;
+      pendingSteps = 0;
+      coast = false;
     },
     setPaused(next: boolean) {
       if (!next) {

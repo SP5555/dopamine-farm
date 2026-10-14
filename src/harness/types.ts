@@ -18,6 +18,12 @@ export interface SimChrome {
    * Off means the sim owns the seed: the shell does not roll one, and `reset` is called without one.
    */
   seed?: boolean;
+  /**
+   * `step` counts a fixed number of steps per wall second. The speed slider is that count.
+   * `frame` takes one step per displayed frame and passes that frame's seconds into `step`.
+   * The default speed is realtime there: a faster display passes a smaller delta.
+   */
+  pace?: 'step' | 'frame';
 }
 
 export interface BarShortcut {
@@ -75,6 +81,8 @@ export type BarPiece =
 export interface SimHost {
   readonly paused: boolean;
   readonly speed: number;
+  /** `frame` when this sim steps once per displayed frame. Otherwise `step`. */
+  readonly pace: 'step' | 'frame';
   readonly autoRestart: boolean;
   /** Seed of the run on screen, when the shell owns it. Unused when `chrome.seed` is off. */
   readonly seed: number;
@@ -91,6 +99,7 @@ export interface SimHost {
    * Play, pause, step, replay, restart, the log speed slider, and auto-restart.
    * Spread this into `toolbar()` and add any pieces of your own.
    * The slider maps 0–1000 onto 0.5–240 steps per second. The shell starts at 8.
+   * In frame pace that same slider is a time scale, and 8 is realtime.
    */
   transport(): BarPiece[];
 }
@@ -179,7 +188,11 @@ export interface SimStatus {
 export interface SimInstance<P extends Params = Params> {
   /** Starts a run. Return quickly. Slow setup is a later phase with `computing` set. The seed is omitted when the sim owns it. */
   reset(params: P, seed?: number): void;
-  step(): void;
+  /**
+   * One event on the fixed clock. In frame pace, `dt` is the seconds to integrate:
+   * the time since the previous frame, scaled so the default speed is realtime.
+   */
+  step(dt?: number): void;
   render(alpha: number): void;
   getStatus(): SimStatus;
   /** Pieces for the top bar. Empty, or omitted, leaves that bar blank. */

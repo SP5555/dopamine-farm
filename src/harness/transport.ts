@@ -1,4 +1,5 @@
 import type { BarPiece, SimHost } from './types';
+import { DEFAULT_SPEED } from './loop';
 
 const SPEED_MIN = 0.5;
 const SPEED_MAX = 240;
@@ -44,7 +45,7 @@ export function transportPieces(host: SimHost): BarPiece[] {
       max: SLIDER_MAX,
       step: 1,
       value: slider,
-      text: formatSpeed(host.speed),
+      text: host.pace === 'frame' ? formatScale(host.speed) : formatSpeed(host.speed),
       onChange: (value) => host.setSpeed(sliderToSpeed(value)),
     },
     {
@@ -75,4 +76,10 @@ function speedToSlider(speed: number): number {
 function formatSpeed(speed: number): string {
   const text = speed < 10 ? speed.toFixed(1) : String(Math.round(speed));
   return `${text}/s`;
+}
+
+function formatScale(speed: number): string {
+  const scale = speed / DEFAULT_SPEED;
+  const text = scale >= 10 ? String(Math.round(scale)) : String(Math.round(scale * 10) / 10);
+  return `${text}×`;
 }

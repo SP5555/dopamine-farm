@@ -8,5 +8,6 @@ export function resolveChrome(module: Pick<SimModule, 'chrome' | 'params'>): Res
   return {
     params: declared.params ?? hasParams,
     seed: declared.seed ?? true,
+    pace: declared.pace ?? 'step',
   };
 }

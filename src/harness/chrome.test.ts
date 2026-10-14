@@ -8,22 +8,30 @@ const rings: ParamSchema = {
 
 describe('resolveChrome', () => {
   it('shows Config when the schema has a param', () => {
-    expect(resolveChrome({ params: rings })).toEqual({ params: true, seed: true });
+    expect(resolveChrome({ params: rings })).toEqual({ params: true, seed: true, pace: 'step' });
   });
 
   it('hides Config when the schema is empty', () => {
-    expect(resolveChrome({ params: {} })).toEqual({ params: false, seed: true });
+    expect(resolveChrome({ params: {} })).toEqual({ params: false, seed: true, pace: 'step' });
   });
 
   it('keeps Config when asked, even with an empty schema', () => {
-    expect(resolveChrome({ params: {}, chrome: { params: true } })).toEqual({ params: true, seed: true });
+    expect(resolveChrome({ params: {}, chrome: { params: true } })).toEqual({ params: true, seed: true, pace: 'step' });
   });
 
   it('hides Config when asked', () => {
-    expect(resolveChrome({ params: rings, chrome: { params: false } })).toEqual({ params: false, seed: true });
+    expect(resolveChrome({ params: rings, chrome: { params: false } })).toEqual({ params: false, seed: true, pace: 'step' });
   });
 
   it('hides the seed when asked', () => {
-    expect(resolveChrome({ params: rings, chrome: { seed: false } })).toEqual({ params: true, seed: false });
+    expect(resolveChrome({ params: rings, chrome: { seed: false } })).toEqual({ params: true, seed: false, pace: 'step' });
+  });
+
+  it('steps once per frame when asked', () => {
+    expect(resolveChrome({ params: rings, chrome: { pace: 'frame' } })).toEqual({
+      params: true,
+      seed: true,
+      pace: 'frame',
+    });
   });
 });
