@@ -12,7 +12,7 @@ import type { Rng } from '../../harness/rng';
 
 export type Orient = 'ab' | 'bc' | 'ca';
 
-export const ORDERS = ['random', 'nearest', 'layers', 'diagonal'] as const;
+export const ORDERS = ['random', 'depth'] as const;
 export type Order = (typeof ORDERS)[number];
 
 export function isOrder(value: string): value is Order {
@@ -95,25 +95,27 @@ export function collectAddable(heights: Uint8Array, a: number, b: number, c: num
 /**
  * One packed column from `list`, or -1 when the list is empty.
  * The list may be the cubes that can leave or the ones that can return.
- * Nearest, layers, and diagonal ignore `rng`. Random draws one entry uniformly.
- * Ties break toward the front corner, then larger `i`, then larger `j`.
+ * Depth ignores `rng`. Random draws one entry uniformly.
+ * A plane is constant `i + j + k`. Removal takes the closest plane. Addition takes the farthest.
+ * Inside a plane, the highest `k` goes first, then the next one down.
+ * A leftover tie breaks toward smaller `i`, then smaller `j`.
  */
 export function chooseRemoval(
   order: Order,
   heights: Uint8Array,
-  a: number,
   b: number,
   list: number[],
   count: number,
   rng: Rng,
+  removing = true,
 ): number {
   if (count <= 0) return -1;
   if (order === 'random') return list[rng.int(count)]!;
   let best = list[0]!;
-  let bestRank = removalRank(order, best, heights, a, b);
+  let bestRank = depthRank(best, heights, b, removing);
   for (let index = 1; index < count; index += 1) {
     const packed = list[index]!;
-    const rank = removalRank(order, packed, heights, a, b);
+    const rank = depthRank(packed, heights, b, removing);
     if (rank < bestRank) {
       best = packed;
       bestRank = rank;
@@ -183,15 +185,15 @@ export function faceCorners(orient: Orient, i: number, j: number, k: number): Ar
 
 /**
  * Smaller is sooner.
- * `di` and `dj` are steps back from the front corner, so 0 is the corner itself.
+ * `i + j + k` is the plane facing the camera. A larger sum is closer.
+ * Removal uses the cube that is leaving (`k = height - 1`). Addition uses the one arriving (`k = height`).
+ * Inside the chosen plane, a larger `k` is sooner.
  */
-function removalRank(order: Order, packed: number, heights: Uint8Array, a: number, b: number): number {
+function depthRank(packed: number, heights: Uint8Array, b: number, removing: boolean): number {
   const i = Math.floor(packed / b);
   const j = packed - i * b;
-  const di = a - 1 - i;
-  const dj = b - 1 - j;
-  if (order === 'diagonal') return (di + dj) * 32 + di;
-  const front = (di * di + dj * dj) * 1024 + di * 32 + dj;
-  if (order === 'layers') return (255 - heights[packed]!) * 2_000_000 + front;
-  return front;
+  const k = heights[packed]! - (removing ? 1 : 0);
+  const depth = i + j + k;
+  const plane = removing ? -depth : depth;
+  return plane * 1_000_000 - k * 1024 + i * 32 + j;
 }

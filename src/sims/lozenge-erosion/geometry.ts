@@ -40,21 +40,6 @@ export function rotateScreen(
   return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
 }
 
-/**
- * The six corners of the hexagon, in boundary order.
- * `(0,0,0)` and `(a,b,c)` project inside it.
- */
-export function hexagonLattice(a: number, b: number, c: number): Array<[number, number, number]> {
-  return [
-    [a, 0, 0],
-    [a, b, 0],
-    [0, b, 0],
-    [0, b, c],
-    [0, 0, c],
-    [a, 0, c],
-  ];
-}
-
 const PAD = 0.08;
 
 /** Fit the box's projected silhouette in the viewport. */

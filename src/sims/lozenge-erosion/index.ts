@@ -1,9 +1,9 @@
 import { createRng, randomSeed, type Rng } from '../../harness/author';
 import type { BarPiece, ParamSchema, Params, SimContext, SimHost, SimInstance, SimModule, SimStatus } from '../../harness/types';
-import { chooseRemoval, collectAddable, collectRemovable, isOrder, type Order } from './heightmap';
-import { ANIMATIONS, PALETTES, animationById, drawLozenges, type AnimationId } from './render';
+import { chooseRemoval, collectAddable, collectRemovable, isOrder, type Order, type Orient } from './heightmap';
+import { ANIMATIONS, PALETTES, animationById, drawLozenges, slideWindows, type AnimationId, type SlideWindow } from './render';
 
-const OPEN_SPEED = 2;
+const OPEN_SPEED = 4;
 /** The finale holds the clock for this many speed ticks. `alpha` still runs 0 to 1 across all of them. */
 const SPIN_TICKS = 3;
 
@@ -21,13 +21,14 @@ export const params: ParamSchema = {
     type: 'select',
     label: 'Order',
     default: 'random',
-    reset: true,
     group: 'Run',
     options: [
       { value: 'random', label: 'Random', detail: 'Uniform among the cubes that can move now.' },
-      { value: 'nearest', label: 'Nearest corner', detail: 'The legal cube closest to the front corner.' },
-      { value: 'layers', label: 'Layer by layer', detail: 'Tallest legal cubes first, then toward the front.' },
-      { value: 'diagonal', label: 'Diagonal sweep', detail: 'Front diagonals first, one wave at a time.' },
+      {
+        value: 'depth',
+        label: 'Depth',
+        detail: 'Removal peels the closest plane, highest cubes first. Addition fills the farthest plane the same way.',
+      },
     ],
   },
   mode: {
@@ -74,9 +75,11 @@ interface BoxSettings {
   animation: AnimationId;
 }
 
+type FaceWindows = Record<Orient, SlideWindow>;
+
 type Pending =
-  | { kind: 'cube'; packed: number; flip: 1 | -1 }
-  | { kind: 'spin'; sign: number; mode: Mode };
+  | { kind: 'cube'; packed: number; flip: 1 | -1; windows: FaceWindows; animation: AnimationId }
+  | { kind: 'spin'; sign: number; mode: Mode; windows: FaceWindows; animation: AnimationId };
 
 function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   host.setSpeed(OPEN_SPEED);
@@ -97,7 +100,7 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   let clock = 1;
   /** Which pass this trace belongs to. A finale starts the next one. */
   let pass = 0;
-  /** Alpha of the latest frame. A move with alpha above 0 has started, so a mode change lets it finish. */
+  /** Alpha of the latest frame. Above 0, the move on screen has started and a setting change lets it finish. */
   let loopAlpha = 0;
 
   function reset(all: Params): void {
@@ -129,10 +132,6 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     return missing;
   }
 
-  function shouldAnimate(): boolean {
-    return box.animation === 'rotate' && !reducedMotion;
-  }
-
   function armNext(): void {
     if (heights.length === 0) {
       pending = null;
@@ -141,28 +140,35 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
       return;
     }
     const n = box.size;
-    if (box.mode === 'removal') {
-      frontier = collectRemovable(heights, n, n, scratch);
-      if (frontier === 0) {
-        armSpin(-1);
-        return;
-      }
-    } else {
-      frontier = collectAddable(heights, n, n, n, scratch);
-      if (frontier === 0) {
-        armSpin(1);
-        return;
-      }
+    const removing = box.mode === 'removal';
+    frontier = removing ? collectRemovable(heights, n, n, scratch) : collectAddable(heights, n, n, n, scratch);
+    if (frontier === 0) {
+      armSpin(removing ? -1 : 1);
+      return;
     }
     clock = 1;
-    const flip: 1 | -1 = box.mode === 'removal' ? 1 : -1;
-    pending = { kind: 'cube', packed: chooseRemoval(box.order, heights, n, n, scratch, frontier, rng), flip };
+    pending = {
+      kind: 'cube',
+      packed: chooseRemoval(box.order, heights, n, scratch, frontier, rng, removing),
+      flip: removing ? 1 : -1,
+      ...motion(),
+    };
   }
 
   function armSpin(sign: number): void {
-    clock = shouldAnimate() ? SPIN_TICKS : 1;
-    pending = { kind: 'spin', sign, mode: box.mode };
+    clock = reducedMotion ? 1 : SPIN_TICKS;
+    pending = { kind: 'spin', sign, mode: box.mode, ...motion() };
     frontier = 0;
+  }
+
+  function motion(): { windows: FaceWindows; animation: AnimationId } {
+    return { windows: rollWindows(), animation: box.animation };
+  }
+
+  function rollWindows(): FaceWindows {
+    const order: Orient[] = ['ab', 'bc', 'ca'];
+    rng.shuffle(order);
+    return slideWindows(order);
   }
 
   function applyDestination(sign: number): void {
@@ -183,35 +189,42 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     armNext();
   }
 
+  function inFlight(): boolean {
+    return loopAlpha > 0 && pending !== null;
+  }
+
   function onModeChange(): void {
     reseed();
-    if (loopAlpha > 0 && pending) return;
+    if (inFlight()) return;
     armNext();
+  }
+
+  function onOrderChange(): void {
+    if (inFlight()) return;
+    armNext();
+  }
+
+  function onAnimationChange(): void {
+    if (inFlight() || !pending) return;
+    pending.animation = box.animation;
   }
 
   function render(alpha: number): void {
     loopAlpha = alpha;
     if (!context) return;
     const n = box.size;
-    let flip = 0;
-    let spin = 0;
-    let packed = -1;
-    if (pending?.kind === 'cube') {
-      flip = pending.flip;
-      packed = pending.packed;
-    } else if (pending?.kind === 'spin') {
-      spin = pending.sign;
-    }
+    const cube = pending?.kind === 'cube' ? pending : null;
     drawLozenges(context, {
       heights,
       a: n,
       b: n,
       c: n,
-      pending: packed < 0 ? null : { i: Math.floor(packed / n), j: packed % n },
-      flip,
-      spin,
+      pending: cube ? { i: Math.floor(cube.packed / n), j: cube.packed % n } : null,
+      flip: cube?.flip ?? 0,
+      spin: pending?.kind === 'spin' ? pending.sign : 0,
       alpha,
-      animation: box.animation,
+      windows: pending?.windows ?? FULL_WINDOWS,
+      animation: pending?.animation ?? box.animation,
       palette: box.palette,
       width,
       height,
@@ -267,8 +280,13 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     setParams(changed, all) {
       const next = readParams(all);
       const modeChanged = next.mode !== box.mode;
+      const orderChanged = next.order !== box.order;
+      const animationChanged = next.animation !== box.animation;
       box = next;
-      if (modeChanged && changed.mode !== undefined && heights.length > 0) onModeChange();
+      if (heights.length === 0) return;
+      if (modeChanged && changed.mode !== undefined) onModeChange();
+      else if (orderChanged && changed.order !== undefined) onOrderChange();
+      else if (animationChanged && changed.animation !== undefined) onAnimationChange();
     },
     resize(nextWidth, nextHeight, nextDpr) {
       width = nextWidth;
@@ -280,6 +298,9 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
     },
   };
 }
+
+const FULL: SlideWindow = { start: 0, end: 1 };
+const FULL_WINDOWS: FaceWindows = { ab: FULL, bc: FULL, ca: FULL };
 
 function playingMode(pending: Pending | null, fallback: Mode): Mode {
   if (pending?.kind === 'cube') return pending.flip > 0 ? 'removal' : 'addition';
@@ -320,4 +341,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export const sim: SimModule = { params, chrome: { seed: false }, create };
+function normalize(values: Params): void {
+  const order = values.order;
+  if (typeof order !== 'string' || !isOrder(order)) values.order = 'random';
+}
+
+export const sim: SimModule = { params, chrome: { seed: false }, normalize, create };

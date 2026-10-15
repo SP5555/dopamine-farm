@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '../../harness/rng';
 import { FLIP_ANGLE, project, rotateScreen } from './geometry';
-
-/** A +60° turn of the whole cube carries each orientation onto this one. */
-const SPIN_LANDS: Record<Orient, Orient> = { ab: 'ca', bc: 'ab', ca: 'bc' };
-/** A −60° turn is that cycle the other way, which also lands on the full cube. */
-const SPIN_BACK: Record<Orient, Orient> = { ab: 'bc', bc: 'ca', ca: 'ab' };
 import {
   chooseRemoval,
   collectAddable,
@@ -19,6 +14,12 @@ import {
   type Order,
   type Orient,
 } from './heightmap';
+import { faceSlide, slideProgress, slideWindows, slidDepth } from './render';
+
+/** A +60° turn of the whole cube carries each orientation onto this one. */
+const SPIN_LANDS: Record<Orient, Orient> = { ab: 'ca', bc: 'ab', ca: 'bc' };
+/** A −60° turn is that cycle the other way, which also lands on the full cube. */
+const SPIN_BACK: Record<Orient, Orient> = { ab: 'bc', bc: 'ca', ca: 'ab' };
 
 describe('lozenge erosion', () => {
   it('empties every box in exactly a·b·c removals', () => {
@@ -30,7 +31,7 @@ describe('lozenge erosion', () => {
       [4, 3, 2],
       [6, 6, 6],
     ];
-    for (const order of ['random', 'nearest', 'layers', 'diagonal'] as const) {
+    for (const order of ['random', 'depth'] as const) {
       for (const [a, b, c] of sizes) {
         if (order !== 'random' && a * b * c > 80) continue;
         const sequence = erode(a, b, c, order, 7, true);
@@ -116,40 +117,42 @@ describe('lozenge erosion', () => {
     expect(second).toEqual(first);
     expect(erode(4, 3, 2, 'random', 12, false)).not.toEqual(first);
 
-    const nearest = erode(3, 3, 2, 'nearest', 1, false);
-    expect(erode(3, 3, 2, 'nearest', 99, false)).toEqual(nearest);
-    expect(erode(3, 3, 2, 'layers', 4, false)).not.toEqual(nearest);
+    const depth = erode(3, 3, 2, 'depth', 1, false);
+    expect(erode(3, 3, 2, 'depth', 99, false)).toEqual(depth);
   });
 
-  it('breaks ties toward the front, then larger i', () => {
+  it('takes the highest cube on the closest plane', () => {
+    const heights = Uint8Array.of(6, 5, 4, 5, 4, 3, 4, 3, 1);
+    expect(isMonotone(heights, 3, 3, 6)).toBe(true);
+    const list: number[] = [];
+    const count = collectRemovable(heights, 3, 3, list);
+    expect(chooseRemoval('depth', heights, 3, list, count, createRng(1))).toBe(0);
+  });
+
+  it('breaks a same-height tie toward the left', () => {
     const heights = fullHeights(2, 2, 1);
     heights[1 * 2 + 1] = 0;
     const list: number[] = [];
     const count = collectRemovable(heights, 2, 2, list);
     expect(count).toBe(2);
-    const rng = createRng(1);
-    expect(chooseRemoval('nearest', heights, 2, 2, list, count, rng)).toBe(1 * 2 + 0);
-    expect(chooseRemoval('diagonal', heights, 2, 2, list, count, rng)).toBe(1 * 2 + 0);
+    expect(chooseRemoval('depth', heights, 2, list, count, createRng(1))).toBe(0 * 2 + 1);
   });
 
-  it('takes the tallest removable cube in layer order', () => {
-    const heights = Uint8Array.of(2, 2, 1, 2, 1, 1, 1, 1, 0);
-    expect(isMonotone(heights, 3, 3, 2)).toBe(true);
+  it('adds the highest cube on the farthest plane', () => {
+    const heights = Uint8Array.of(1, 0, 0, 0);
     const list: number[] = [];
-    const count = collectRemovable(heights, 3, 3, list);
-    const rng = createRng(1);
-    expect(chooseRemoval('layers', heights, 3, 3, list, count, rng)).toBe(1 * 3 + 0);
-    expect(chooseRemoval('nearest', heights, 3, 3, list, count, rng)).toBe(2 * 3 + 1);
+    const count = collectAddable(heights, 2, 2, 3, list);
+    expect(chooseRemoval('depth', heights, 2, list, count, createRng(1), false)).toBe(0);
   });
 
   it('starts at the front corner', () => {
-    for (const order of ['random', 'nearest', 'layers', 'diagonal'] as const) {
+    for (const order of ['random', 'depth'] as const) {
       const heights = fullHeights(4, 3, 2);
       const list: number[] = [];
       const count = collectRemovable(heights, 4, 3, list);
       expect(count).toBe(1);
       expect(isRemovable(heights, 4, 3, 3, 2)).toBe(true);
-      expect(chooseRemoval(order, heights, 4, 3, list, count, createRng(5))).toBe(3 * 3 + 2);
+      expect(chooseRemoval(order, heights, 3, list, count, createRng(5))).toBe(3 * 3 + 2);
     }
   });
 
@@ -159,15 +162,80 @@ describe('lozenge erosion', () => {
     const rng = createRng(4);
     for (let step = 0; step < 5; step += 1) {
       const count = collectRemovable(heights, 3, 3, list);
-      const packed = chooseRemoval('random', heights, 3, 3, list, count, rng);
+      const packed = chooseRemoval('random', heights, 3, list, count, rng);
       heights[packed] = heights[packed]! - 1;
       expect(isMonotone(heights, 3, 3, 3)).toBe(true);
     }
     const addCount = collectAddable(heights, 3, 3, 3, list);
     expect(addCount).toBeGreaterThan(0);
-    const added = chooseRemoval('nearest', heights, 3, 3, list, addCount, rng);
+    const added = chooseRemoval('depth', heights, 3, list, addCount, rng, false);
     heights[added] = heights[added]! + 1;
     expect(isMonotone(heights, 3, 3, 3)).toBe(true);
+  });
+
+  it('slides each lozenge onto the parallel face, and the whole box the same way', () => {
+    for (const cube of [
+      { i: 0, j: 0, k: 0 },
+      { i: 2, j: 1, k: 3 },
+    ]) {
+      const { i, j, k } = cube;
+      const leaving = [
+        ['ab', i, j, k + 1],
+        ['bc', i + 1, j, k],
+        ['ca', i, j + 1, k],
+      ] as const;
+      const hole = [
+        ['ab', i, j, k],
+        ['bc', i, j, k],
+        ['ca', i, j, k],
+      ] as const;
+      for (let index = 0; index < leaving.length; index += 1) {
+        const [orient, x, y, z] = leaving[index]!;
+        const [di, dj, dk] = faceSlide(orient, true);
+        const slid = screenPoly(orient, x + di, y + dj, z + dk);
+        const [ho, hx, hy, hz] = hole[index]!;
+        expect(samePoly(slid, screenPoly(ho, hx, hy, hz))).toBe(true);
+      }
+    }
+    for (const n of [1, 4]) {
+      const empty = new Map<string, Orient>();
+      visitFaces(new Uint8Array(n * n), n, n, n, (orient, i, j, k) => {
+        empty.set(screenPoly(orient, i, j, k).map(([x, y]) => `${Math.round(x * 1e6)},${Math.round(y * 1e6)}`).sort().join('|'), orient);
+      });
+      visitFaces(fullHeights(n, n, n), n, n, n, (orient, i, j, k) => {
+        const [di, dj, dk] = faceSlide(orient, true, n);
+        const key = screenPoly(orient, i + di, j + dj, k + dk)
+          .map(([x, y]) => `${Math.round(x * 1e6)},${Math.round(y * 1e6)}`)
+          .sort()
+          .join('|');
+        expect(empty.get(key)).toBe(orient);
+      });
+    }
+  });
+
+  it('puts a lozenge farther from the camera the more it has slid away', () => {
+    expect(slidDepth('ab', 1, 2, 3, 0, true, 4)).toBe(6);
+    expect(slidDepth('bc', 1, 2, 3, 1, true, 4)).toBe(2);
+    expect(slidDepth('ca', 1, 2, 3, 1, false, 4)).toBe(10);
+    expect(slidDepth('ab', 0, 0, 4, 0.5, true, 4)).toBeLessThan(slidDepth('bc', 4, 0, 0, 0, true, 4));
+  });
+
+  it('deals the three faces a random order of staggered windows', () => {
+    const windows = slideWindows(['ca', 'ab', 'bc']);
+    expect(windows.ca).toEqual({ start: 0, end: 0.6 });
+    expect(windows.ab).toEqual({ start: 0.2, end: 0.8 });
+    expect(windows.bc).toEqual({ start: 0.4, end: 1 });
+    expect(slideProgress(0, windows.ca)).toBe(0);
+    expect(slideProgress(0.3, windows.ca)).toBeCloseTo(0.5);
+    expect(slideProgress(0.6, windows.ca)).toBe(1);
+    expect(slideProgress(0.2, windows.ab)).toBe(0);
+    expect(slideProgress(0.4, windows.bc)).toBe(0);
+    expect(slideProgress(1, windows.bc)).toBe(1);
+    const rng = createRng(7);
+    const order: Orient[] = ['ab', 'bc', 'ca'];
+    rng.shuffle(order);
+    const dealt = slideWindows(order);
+    expect([dealt.ab.start, dealt.bc.start, dealt.ca.start].sort()).toEqual([0, 0.2, 0.4]);
   });
 
   it('spins an empty cube 60° either way onto the full cube and cycles the face colors', () => {
@@ -195,7 +263,7 @@ function erode(a: number, b: number, c: number, order: Order, seed: number, chec
     if (checkFaces) expect(keysOf(heights, a, b, c)).toEqual(bruteKeys(heights, a, b, c));
     const count = collectRemovable(heights, a, b, list);
     expect(count).toBeGreaterThan(0);
-    const packed = chooseRemoval(order, heights, a, b, list, count, rng);
+    const packed = chooseRemoval(order, heights, b, list, count, rng);
     const i = Math.floor(packed / b);
     const j = packed % b;
     expect(isRemovable(heights, a, b, i, j)).toBe(true);
