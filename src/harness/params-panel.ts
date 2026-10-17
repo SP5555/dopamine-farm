@@ -81,6 +81,7 @@ export function createParamsPanel(
       muted = wasMuted;
     },
     dispose() {
+      hideDetail();
       detachMenus();
       pane.dispose();
       container.replaceChildren();
@@ -104,19 +105,50 @@ function hostFor(pane: Pane, folders: Map<string, FolderApi>, group: string | un
 }
 
 function addControl(parent: Pane | FolderApi, params: Params, key: string, def: ParamDef): { hidden: boolean } {
-  if (def.type === 'number') {
-    return parent.addBinding(params, key, {
-      label: def.label,
-      min: def.min,
-      max: def.max,
-      step: def.step,
-    });
+  const binding =
+    def.type === 'number'
+      ? parent.addBinding(params, key, {
+          label: def.label,
+          min: def.min,
+          max: def.max,
+          step: def.step,
+        })
+      : def.type === 'boolean'
+        ? parent.addBinding(params, key, { label: def.label })
+        : parent.addBinding(params, key, {
+            label: def.label,
+            options: def.options.map((option) => ({ text: option.label, value: option.value })),
+          });
+  if (def.detail) attachDetail(binding.element, def.detail);
+  return binding;
+}
+
+let detailTip: HTMLDivElement | null = null;
+
+function attachDetail(row: HTMLElement, text: string): void {
+  row.dataset.detail = text;
+  const label = row.querySelector('.tp-lblv_l');
+  if (label instanceof HTMLElement) label.style.cursor = 'help';
+  row.addEventListener('pointerenter', () => showDetail(row, text));
+  row.addEventListener('pointerleave', hideDetail);
+}
+
+function showDetail(row: HTMLElement, text: string): void {
+  if (!detailTip) {
+    detailTip = document.createElement('div');
+    detailTip.className = 'param-tip';
+    document.body.append(detailTip);
   }
-  if (def.type === 'boolean') return parent.addBinding(params, key, { label: def.label });
-  return parent.addBinding(params, key, {
-    label: def.label,
-    options: def.options.map((option) => ({ text: option.label, value: option.value })),
-  });
+  detailTip.textContent = text;
+  const rowBox = row.getBoundingClientRect();
+  const tipBox = detailTip.getBoundingClientRect();
+  detailTip.style.left = `${Math.max(8, rowBox.left - tipBox.width - 10)}px`;
+  detailTip.style.top = `${Math.max(8, rowBox.top + (rowBox.height - tipBox.height) / 2)}px`;
+}
+
+function hideDetail(): void {
+  detailTip?.remove();
+  detailTip = null;
 }
 
 interface RangeBinding {

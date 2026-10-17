@@ -279,8 +279,10 @@ export function createApp(root: HTMLElement): App {
     const panel = chrome.params
       ? createParamsPanel(paramsHost, schema, params, {
           onChange: (key, structural, commit) => {
+            const before = JSON.stringify(params);
             sim.normalize?.(params);
-            panel?.updateVisibility();
+            if (JSON.stringify(params) !== before) panel?.refresh();
+            else panel?.updateVisibility();
             if (!structural) {
               const value = params[key];
               if (value !== undefined) instance.setParams?.({ [key]: value }, params);

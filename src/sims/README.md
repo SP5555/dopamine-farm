@@ -188,10 +188,11 @@ Each entry is a `number`, a `boolean`, or a `select`.
 - `reset: true` restarts the run when the value changes. Leave it off and read the new value in `setParams(changed, all)`. `changed` is only the key that moved. `all` is the whole bag.
 - `when(params)` hides the control. The value stays part of the run.
 - `group: 'Name'` puts every control with that title in one folder.
-- On a select, `options` is `{ value, label, detail? }[]`. `detail` is the one-line hover text.
+- `detail` is the hover text for that control.
+- On a select, `options` is `{ value, label, detail? }[]`. `detail` is the one-line hover text for that choice.
 - `available(option, params)` returns `true` to keep a choice selectable. A string, or `{ note, detail }`, keeps it in the list but grayed out. `note` is appended to the label.
 
-`normalize(params)` may rewrite the bag before a run starts and after each edit. Use it when one setting makes another illegal.
+`normalize(params)` may rewrite the bag before a run starts and after each edit. Use it when one setting makes another illegal. The panel shows the bag after that rewrite.
 
 ## When the shell gets in the way
 

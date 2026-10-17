@@ -349,6 +349,20 @@ input {
   cursor: default;
 }
 
+.param-tip {
+  position: fixed;
+  z-index: 31;
+  width: 220px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: #101218;
+  color: #ece8e1;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
 .choice-tip {
   position: fixed;
   z-index: 31;

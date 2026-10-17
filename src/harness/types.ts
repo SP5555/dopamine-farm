@@ -118,6 +118,8 @@ export interface UnavailableChoice {
 
 interface ParamBase {
   label: string;
+  /** Shown when the control is hovered. */
+  detail?: string;
   /** Structural params restart the run. Live params call setParams and continue. */
   reset?: boolean;
   /** Hide the control when this returns false. The value is still part of the run. */
