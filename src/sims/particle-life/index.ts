@@ -117,15 +117,14 @@ interface Settings {
   dot: number;
 }
 
-function create(ctx: SimContext, _host: SimHost): SimInstance<Params> {
+function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
   let width = ctx.width;
   let height = ctx.height;
   let dpr = ctx.dpr;
   let context: CanvasRenderingContext2D | null = null;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const editor: MatrixEditor | null = ctx.canvas.parentElement
-    ? createMatrixEditor(ctx.canvas.parentElement, editRule)
-    : null;
+  const card = host.card({ caption: 'Row feels about column' });
+  const editor: MatrixEditor = createMatrixEditor(card.body, editRule);
   ctx.canvas.style.background = '#0e1014';
 
   let settings = readParams(paramsDefault());
@@ -287,7 +286,8 @@ function create(ctx: SimContext, _host: SimHost): SimInstance<Params> {
       disposed = true;
       gpu?.destroy();
       gpu = null;
-      editor?.dispose();
+      editor.dispose();
+      card.dispose();
       context = null;
     },
   };

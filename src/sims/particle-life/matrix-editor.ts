@@ -9,16 +9,10 @@ export interface MatrixEditor {
   dispose(): void;
 }
 
-/** Live number grid for the interaction matrix. Row feels about column, from −1 to 1. */
+/** Live number grid for the interaction matrix. Row feels about column, from −1 to 1. The shell owns the frame around `parent`. */
 export function createMatrixEditor(parent: HTMLElement, onEdit: (index: number, value: number) => void): MatrixEditor {
-  const root = document.createElement('div');
-  root.className = 'canvas-card is-bottom-right';
-  const caption = document.createElement('p');
-  caption.className = 'canvas-card-caption';
-  caption.textContent = 'Row feels about column';
   const grid = document.createElement('div');
-  root.append(caption, grid);
-  parent.append(root);
+  parent.append(grid);
 
   let inputs: HTMLInputElement[] = [];
   let shown = 0;
@@ -137,7 +131,7 @@ export function createMatrixEditor(parent: HTMLElement, onEdit: (index: number, 
   return {
     sync,
     dispose() {
-      root.remove();
+      grid.remove();
     },
   };
 }
