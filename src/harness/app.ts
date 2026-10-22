@@ -1,3 +1,4 @@
+import { createWorldCard } from './card';
 import { resolveChrome, type ResolvedChrome } from './chrome';
 import { createLoop, DEFAULT_SPEED } from './loop';
 import { createNav } from './nav';
@@ -9,7 +10,7 @@ import { buildRoute, parseRoute } from './router';
 import { createBar } from './bar';
 import { createStatusBar, statusHasBody } from './status-bar';
 import { transportPieces } from './transport';
-import type { ParamSchema, Params, SimHost, SimInstance, SimMeta, SimStatus } from './types';
+import type { ParamSchema, Params, SimHost, SimInstance, SimMeta, SimStatus, WorldCard } from './types';
 
 const ROUTE_DELAY_MS = 100;
 const RESTART_DELAY_MS = 2500;
@@ -108,6 +109,7 @@ export function createApp(root: HTMLElement): App {
       return mounted?.instance.getStatus() ?? { done: true };
     },
   });
+  const cards = new Set<WorldCard>();
   const host: SimHost = {
     get paused() {
       return loop.paused;
@@ -146,6 +148,23 @@ export function createApp(root: HTMLElement): App {
       autoOn = on;
       if (on) armRestart();
       else clearRestart();
+    },
+    card(options) {
+      const card = createWorldCard(canvasHost, options);
+      const tracked: WorldCard = {
+        get body() {
+          return card.body;
+        },
+        setCaption(text) {
+          card.setCaption(text);
+        },
+        dispose() {
+          cards.delete(tracked);
+          card.dispose();
+        },
+      };
+      cards.add(tracked);
+      return tracked;
     },
     transport() {
       return transportPieces(host);
@@ -345,6 +364,7 @@ export function createApp(root: HTMLElement): App {
     window.removeEventListener('resize', mounted.onWindowResize);
     mounted.panel?.dispose();
     mounted.instance.dispose();
+    for (const card of [...cards]) card.dispose();
     mounted.canvas.remove();
     mounted = null;
   }

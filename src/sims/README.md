@@ -80,7 +80,7 @@ Import from `src/harness/author.ts`.
 | Export | Use |
 | --- | --- |
 | `SimModule`, `SimMeta`, `SimContext`, `SimStatus`, `SimInstance` | The types for `meta` and `sim`. |
-| `SimHost`, `BarPiece` | The host, and a piece either bar can show. |
+| `SimHost`, `BarPiece`, `WorldCard` | The host, a bar piece, and a frame pinned on the world. |
 | `ParamSchema`, `Params`, `SelectOption`, `UnavailableChoice` | Param definitions, when you want them named. |
 | `SimChrome` | Turns Config or the shell seed off. |
 | `createRng`, `randomSeed` | A seeded stream, and a roll when the sim owns the seed. |
@@ -135,7 +135,7 @@ aside: [{ type: 'metric', id: 'radius', label: 'Radius', value: radius }],
 
 `done` and `computing` ride along on `getStatus()`. They drive the run. They are not pieces, and the top bar does not have them.
 
-`host` is the second argument of `create`. It can pause, step, replay the current seed, roll a new run, set the speed, and turn auto-restart on. `host.transport()` is the shared play, step, replay, restart, speed, and auto-restart pieces. Spread it into `toolbar()` and add your own:
+`host` is the second argument of `create`. It can pause, step, replay the current seed, roll a new run, set the speed, turn auto-restart on, and pin a card on the world. `host.transport()` is the shared play, step, replay, restart, speed, and auto-restart pieces. Spread it into `toolbar()` and add your own:
 
 ```ts
 toolbar: () => [...host.transport(), { type: 'readout', id: 'radius', label: 'Radius', value: String(radius) }],
@@ -144,6 +144,19 @@ toolbar: () => [...host.transport(), { type: 'readout', id: 'radius', label: 'Ra
 A sim that never calls those leaves them unused. Omitting `toolbar()` still leaves the top bar empty. The shell shows the seed there, and the address is the path: the sim id, the seed, and any param that differs from its default. Opening that address again plays the same run. `chrome: { seed: false }` means the sim owns the seed. The shell hides it, leaves it out of the address, and calls `reset` with no seed. Roll one inside the sim with `randomSeed()` if you need one. An old `#/id` link still opens, and the shell rewrites it to the path. The speed slider maps 0–1000 onto 0.5–240 steps per second, and a fresh page starts at 8. Switching to another sim starts at 8 again. Replay and Restart keep the speed set for this one.
 
 A button may set `pressed: true`. Add `toggle: true` for the highlighted pressed style. `shortcut` adds a key and a hint. The hint line joins every shortcut from both bars. `repeat: true` keeps firing while the key is held.
+
+## A card on the world
+
+`host.card()` pins a frame on the world. The shell draws that frame. The sim fills the body: a grid, a second canvas, a button, whatever the run needs.
+
+```ts
+const card = host.card({ corner: 'bottom-right', caption: 'Counts' });
+card.body.append(list);
+```
+
+`corner` is `top-left`, `top-right`, `bottom-left`, or `bottom-right`. Leave it off for the bottom-right. Leave `caption` off and there is no line. `setCaption` changes the line later. Call `card()` from `create`, and call `card.dispose()` from `dispose`. Leaving the sim drops a card that is still up. More than one card is fine.
+
+A panel already pinned with `canvas-card` moves its contents into `body` and drops that class from the outer node. The shell draws the frame.
 
 ## Long runs
 

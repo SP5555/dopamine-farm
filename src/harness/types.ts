@@ -96,12 +96,33 @@ export interface SimHost {
   setSpeed(stepsPerSecond: number): void;
   setAutoRestart(on: boolean): void;
   /**
+   * A frame pinned to a corner of the world. Fill `body`. Call it from `create`.
+   * `corner` defaults to the bottom-right.
+   */
+  card(options?: CardOptions): WorldCard;
+  /**
    * Play, pause, step, replay, restart, the log speed slider, and auto-restart.
    * Spread this into `toolbar()` and add any pieces of your own.
    * The slider maps 0–1000 onto 0.5–240 steps per second. The shell starts at 8.
    * In frame pace that same slider is a time scale, and 8 is realtime.
    */
   transport(): BarPiece[];
+}
+
+export type CardCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+export interface CardOptions {
+  /** Where the frame sits on the world. Defaults to the bottom-right. */
+  corner?: CardCorner;
+  /** One line above the body. Leave it off and there is no line. */
+  caption?: string;
+}
+
+export interface WorldCard {
+  /** The sim fills this. The shell owns the frame around it. */
+  readonly body: HTMLElement;
+  setCaption(text: string): void;
+  dispose(): void;
 }
 
 export interface SelectOption {

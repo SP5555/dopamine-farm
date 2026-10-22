@@ -1,5 +1,7 @@
 export type {
   BarPiece,
+  CardCorner,
+  CardOptions,
   ParamSchema,
   Params,
   SelectOption,
@@ -11,5 +13,6 @@ export type {
   SimModule,
   SimStatus,
   UnavailableChoice,
+  WorldCard,
 } from './types';
 export { createRng, randomSeed, type Rng } from './rng';

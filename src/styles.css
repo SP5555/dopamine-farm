@@ -280,8 +280,9 @@ input {
   display: block;
 }
 
-/* A sim may pin a small panel on the canvas. Sizes are inherited by a swatch or a scrub inside it. */
-.canvas-card {
+/* A sim may still pin its own panel with these names. Prefer host.card(). */
+.canvas-card,
+.shell-card {
   --swatch-width: 18px;
   --swatch-height: 14px;
   --scrub-width: 46px;
@@ -295,15 +296,43 @@ input {
   background: rgba(14, 16, 20, 0.88);
 }
 
-.canvas-card.is-bottom-right {
+.canvas-card.is-top-left,
+.shell-card.is-top-left {
+  top: 12px;
+  left: 12px;
+}
+
+.canvas-card.is-top-right,
+.shell-card.is-top-right {
+  top: 12px;
+  right: 12px;
+}
+
+.canvas-card.is-bottom-left,
+.shell-card.is-bottom-left {
+  bottom: 12px;
+  left: 12px;
+}
+
+.canvas-card.is-bottom-right,
+.shell-card.is-bottom-right {
   right: 12px;
   bottom: 12px;
 }
 
-.canvas-card-caption {
+.canvas-card-caption,
+.shell-card-caption {
   margin: 0 0 8px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.shell-card-caption[hidden] {
+  display: none;
+}
+
+.shell-card-body {
+  min-width: 0;
 }
 
 .swatch {
