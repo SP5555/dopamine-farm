@@ -280,6 +280,69 @@ input {
   display: block;
 }
 
+/* A sim may pin a small panel on the canvas. Sizes are inherited by a swatch or a scrub inside it. */
+.canvas-card {
+  --swatch-width: 18px;
+  --swatch-height: 14px;
+  --scrub-width: 46px;
+  position: absolute;
+  z-index: 2;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(14, 16, 20, 0.88);
+}
+
+.canvas-card.is-bottom-right {
+  right: 12px;
+  bottom: 12px;
+}
+
+.canvas-card-caption {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.swatch {
+  display: block;
+  width: var(--swatch-width, 18px);
+  height: var(--swatch-height, 14px);
+  border-radius: 3px;
+}
+
+.scrub {
+  width: var(--scrub-width, 46px);
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: #2a2e38;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.scrub::-webkit-inner-spin-button,
+.scrub::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.scrub:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .params-host {
   position: absolute;
   top: 12px;
