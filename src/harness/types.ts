@@ -101,8 +101,8 @@ export interface SimHost {
    */
   card(options?: CardOptions): WorldCard;
   /**
-   * Play, pause, step, replay, restart, the log speed slider, and auto-restart.
-   * Spread this into `toolbar()` and add any pieces of your own.
+   * Optional playback pieces: play, step, replay, restart, the speed slider, and auto-restart.
+   * Take the whole list, a few of them, or none. Plenty of sims are not played step by step.
    * The slider maps 0–1000 onto 0.5–240 steps per second. The shell starts at 8.
    * In frame pace that same slider is a time scale, and 8 is realtime.
    */
@@ -199,9 +199,9 @@ export interface SimStatus {
    * Ignored while `computing` is set.
    */
   span?: number;
-  /** Left side of the footer, in order. Any bar piece. */
+  /** Optional. Left side of the footer. Omit it and that side stays blank. */
   row?: BarPiece[];
-  /** Right side of the footer, in order. Any bar piece. */
+  /** Optional. Right side of the footer. Omit it and that side stays blank. */
   aside?: BarPiece[];
   note?: string;
   /** Done banner title. The shell adds the elapsed time. */
@@ -218,7 +218,7 @@ export interface SimInstance<P extends Params = Params> {
   step(dt?: number): void;
   render(alpha: number): void;
   getStatus(): SimStatus;
-  /** Pieces for the top bar. Empty, or omitted, leaves that bar blank. */
+  /** Optional pieces for the top bar. Empty, or omitted, leaves that bar blank. */
   toolbar?(): BarPiece[];
   setParams?(changed: Partial<P>, all: P): void;
   resize?(width: number, height: number, dpr: number): void;

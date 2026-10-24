@@ -53,15 +53,7 @@ export const sim: SimModule = {
         context.stroke();
       },
       getStatus() {
-        const done = radius >= target;
-        return {
-          done,
-          row: [
-            { type: 'label', id: 'phase', text: done ? 'Filled' : 'Growing' },
-            { type: 'progress', id: 'progress', value: target === 0 ? 1 : radius / target },
-            { type: 'metric', id: 'radius', label: 'Radius', value: radius },
-          ],
-        };
+        return { done: radius >= target };
       },
       dispose() {},
     };
@@ -87,61 +79,35 @@ Import from `src/harness/author.ts`.
 
 ## Bars
 
-The same pieces go in either bar. `toolbar()` fills the top bar. `getStatus()` fills the footer, and also reports the run. An empty list, or no `toolbar`, leaves that bar blank.
+The same pieces can go in either bar. Both bars start empty. `toolbar()` is the top bar. `row` and `aside` on `getStatus()` are the two sides of the footer. Add a piece only when this sim has something to put there. Sims differ a lot: some are played step by step, and some are not. A bar with nothing to show stays blank.
 
 A piece is a `button`, `slider`, `select`, `label`, `progress`, `readout`, or `metric`. A button, slider, or dropdown handles its own click or change. The others are only display. `progress` uses `null` for the indeterminate bar. A `metric` is a number plus a sparkline.
 
 ```ts
 toolbar: () => [
-  {
-    type: 'button',
-    id: 'play',
-    label: host.paused ? 'Play' : 'Pause',
-    shortcut: { key: ' ', hint: 'Space play/pause' },
-    onClick: () => host.togglePaused(),
-  },
-  { type: 'readout', id: 'radius', label: 'Radius', value: String(radius) },
-  {
-    type: 'slider',
-    id: 'speed',
-    label: 'Speed',
-    min: 0,
-    max: 100,
-    step: 1,
-    value: 40,
-    text: '40',
-    onChange: (value) => host.setSpeed(value),
-  },
-],
+  { type: 'button', id: 'nudge', label: 'Nudge', onClick: () => { radius += 1 } },
+]
 ```
 
 ```ts
 row: [
   { type: 'label', id: 'phase', text: 'Growing' },
   { type: 'progress', id: 'progress', value: 0.4 },
-  {
-    type: 'button',
-    id: 'nudge',
-    label: 'Nudge',
-    onClick: () => {
-      radius += 1;
-    },
-  },
 ],
 aside: [{ type: 'metric', id: 'radius', label: 'Radius', value: radius }],
 ```
 
-`row` is the left side of the footer and `aside` is the right side. `note` is the line underneath. `banner` is the title of the done banner. Leave a list out and that part stays blank. A metric's sparkline is one trace for its id, its label, and its `series`. Change the label, or set `series` to a new string, to start a fresh line. The trace keeps the latest 600 samples.
+`row` is the left side of the footer and `aside` is the right side. `note` is the line underneath. `banner` is the title of the done banner. Leave any of these out and that part stays blank. A metric's sparkline is one trace for its id, its label, and its `series`. Change the label, or set `series` to a new string, to start a fresh line. The trace keeps the latest 600 samples.
 
-`done` and `computing` ride along on `getStatus()`. They drive the run. They are not pieces, and the top bar does not have them.
+`done` and `computing` ride along on `getStatus()`. They drive the run. They are not pieces, and neither bar has them unless you add pieces of your own.
 
-`host` is the second argument of `create`. It can pause, step, replay the current seed, roll a new run, set the speed, turn auto-restart on, and pin a card on the world. `host.transport()` is the shared play, step, replay, restart, speed, and auto-restart pieces. Spread it into `toolbar()` and add your own:
+`host` is the second argument of `create`. It can pause, step, replay the current seed, roll a new run, set the speed, turn auto-restart on, and pin a card on the world. `host.transport()` bundles play, step, replay, restart, speed, and auto-restart for a sim that is played back. Take the whole list, keep a few pieces, or skip it. A sim that does not play step by step leaves it out.
 
 ```ts
-toolbar: () => [...host.transport(), { type: 'readout', id: 'radius', label: 'Radius', value: String(radius) }],
+toolbar: () => host.transport().filter((piece) => piece.id === 'play' || piece.id === 'speed')
 ```
 
-A sim that never calls those leaves them unused. Omitting `toolbar()` still leaves the top bar empty. The shell shows the seed there, and the address is the path: the sim id, the seed, and any param that differs from its default. Opening that address again plays the same run. `chrome: { seed: false }` means the sim owns the seed. The shell hides it, leaves it out of the address, and calls `reset` with no seed. Roll one inside the sim with `randomSeed()` if you need one. An old `#/id` link still opens, and the shell rewrites it to the path. The speed slider maps 0–1000 onto 0.5–240 steps per second, and a fresh page starts at 8. Switching to another sim starts at 8 again. Replay and Restart keep the speed set for this one.
+Omitting `toolbar()` leaves the top bar empty. The shell shows the seed there, and the address is the path: the sim id, the seed, and any param that differs from its default. Opening that address again plays the same run. `chrome: { seed: false }` means the sim owns the seed. The shell hides it, leaves it out of the address, and calls `reset` with no seed. Roll one inside the sim with `randomSeed()` if you need one. An old `#/id` link still opens, and the shell rewrites it to the path. When a speed piece is shown, its slider maps 0–1000 onto 0.5–240 steps per second, and a fresh page starts at 8. Switching to another sim starts at 8 again. Replay and Restart keep the speed set for this one.
 
 A button may set `pressed: true`. Add `toggle: true` for the highlighted pressed style. `shortcut` adds a key and a hint. The hint line joins every shortcut from both bars. `repeat: true` keeps firing while the key is held.
 
@@ -174,7 +140,7 @@ After `done`, the shell keeps calling `render` every frame, and `alpha` stays 0.
 
 Leave `pace` off for one event per step. `step` runs at the speed slider, from 0.5 to 240 times per wall second, starting at 8. Draw the event in progress with `alpha`, from 0 up to 1. A faster monitor paints that in-between more often. It does not add steps.
 
-For a fixed rate, such as 60 a second, stay on that clock and call `host.setSpeed(60)`. Each `step` is one slice of your own size. `alpha` is still the in-between, so the picture follows the monitor. Leave the speed slider out of `toolbar()` when that rate must stay put. Showing `host.transport()` lets the viewer move it.
+For a fixed rate, such as 60 a second, stay on that clock and call `host.setSpeed(60)`. Each `step` is one slice of your own size. `alpha` is still the in-between, so the picture follows the monitor. A speed piece in the toolbar lets the viewer move that rate. Leave it out and the rate stays where `setSpeed` put it.
 
 `chrome: { pace: 'frame' }` steps once per painted frame. `step(dt)` receives the seconds since the previous frame, scaled so the default speed is realtime. Integrate `dt`. A faster monitor passes a smaller `dt` and covers the same world time per wall second. `alpha` stays 0 and `span` is ignored. The speed slider becomes a time scale, and 8 reads as 1×.
 
