@@ -46,6 +46,20 @@ function speedSlider(host: SimHost): BarPiece {
   };
 }
 
+function diskName(disk: number, disks: number): string {
+  if (disk <= 0) return 'top disk';
+  if (disk >= disks - 1) return 'bottom disk';
+  const place = disk + 1;
+  const teen = place % 100;
+  let suffix = 'th';
+  if (teen < 11 || teen > 13) {
+    if (place % 10 === 1) suffix = 'st';
+    else if (place % 10 === 2) suffix = 'nd';
+    else if (place % 10 === 3) suffix = 'rd';
+  }
+  return `${place}${suffix} disk from the top`;
+}
+
 function sliderToSpeed(slider: number): number {
   const t = Math.min(SLIDER_MAX, Math.max(0, slider)) / SLIDER_MAX;
   return Math.exp(Math.log(SPEED_MIN) + t * (Math.log(SPEED_MAX) - Math.log(SPEED_MIN)));
@@ -308,13 +322,14 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
 
   function getStatus(): SimStatus {
     const left = queue.length + (move ? 1 : 0);
+    const hop = left === 1 ? '1 hop left' : `${left} hops left`;
     return {
       done: false,
       row: [
         { type: 'label', id: 'phase', text: left > 0 ? 'Walking' : 'Still' },
         { type: 'readout', id: 'hops', label: 'Hops', value: String(left) },
       ],
-      note: 'Hover a disk to see where it and the smaller ones can go. Click a point. The three corners are the solved towers.',
+      note: move && left > 0 ? `Moving the ${diskName(move.disk, disks)}. ${hop}.` : 'The three corners are the solved towers.',
     };
   }
 

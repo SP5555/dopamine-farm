@@ -163,15 +163,24 @@ function place(state: number, disk: number, corners: readonly [Point, Point, Poi
 }
 
 function nest(state: number, disk: number, corners: readonly [Point, Point, Point]): [Point, Point, Point] {
-  const peg = pegOf(state, disk);
+  return copyCorners(pegOf(state, disk), disk, corners);
+}
+
+/** Corners of the copy where `disk` sits on `peg`. The other two corners slide in along the sides. */
+export function copyCorners(peg: number, disk: number, corners: readonly [Point, Point, Point]): [Point, Point, Point] {
   const along = (2 ** disk - 1) / (2 ** (disk + 1) - 1);
   const sub: [Point, Point, Point] = [corners[0]!, corners[1]!, corners[2]!];
   for (let other = 0; other < 3; other += 1) {
     if (other === peg) continue;
-    const spare = 3 - peg - other;
-    sub[spare] = between(corners[peg]!, corners[other]!, along);
+    sub[3 - peg - other] = between(corners[peg]!, corners[other]!, along);
   }
   return sub;
+}
+
+/** The one-step link between the copies where `disk` sits on peg `a` and peg `b`. */
+export function bridgeOf(disk: number, a: number, b: number, corners: readonly [Point, Point, Point]): [Point, Point] {
+  const along = (2 ** disk - 1) / (2 ** (disk + 1) - 1);
+  return [between(corners[a]!, corners[b]!, along), between(corners[b]!, corners[a]!, along)];
 }
 
 function between(from: Point, toward: Point, along: number): Point {

@@ -1,4 +1,4 @@
-import { legalEdges, moveDisk, pegOf, pointOf, regionOf, solved, solvedPeg, stateCount, type Move, type Point } from './graph';
+import { bridgeOf, copyCorners, moveDisk, pegOf, pointOf, regionOf, solved, solvedPeg, stateCount, type Move, type Point } from './graph';
 
 const PEG_COLOR = ['#e0a45a', '#8eb4d4', '#9dcea8'] as const;
 /** Smallest disk, the one on top. */
@@ -21,7 +21,8 @@ export interface Box {
 
 export interface Layout {
   points: Point[];
-  edges: Array<[number, number]>;
+  /** Every move has this length: the side split into 2^n − 1 equal steps. */
+  edgeLength: number;
   pegX: [number, number, number];
   baseY: number;
   pegTop: number;
@@ -81,16 +82,11 @@ export function layoutOf(disks: number, width: number, height: number): Layout {
   const towers = towerShape(disks, Math.max(64, width - EDGE * 2));
   const frame = frameOf(disks, width, height, towers.diskH, towers.pegTip);
   const points = Array.from({ length: stateCount(disks) }, (_, state) => pointOf(state, disks, frame.corners));
-  const edges = legalEdges(disks);
-  let minEdge = frame.side;
-  for (const [from, to] of edges) {
-    const length = Math.hypot(points[from]!.x - points[to]!.x, points[from]!.y - points[to]!.y);
-    if (length < minEdge) minEdge = length;
-  }
+  const edgeLength = frame.side / (2 ** disks - 1);
   const center = frame.corners[2].x;
   return {
     points,
-    edges,
+    edgeLength,
     pegX: [center - towers.pegSpacing, center + towers.pegSpacing, center],
     baseY: frame.baseY,
     pegTop: frame.pegTop,
@@ -100,8 +96,8 @@ export function layoutOf(disks: number, width: number, height: number): Layout {
     bounds: frame.bounds,
     diskH: towers.diskH,
     diskW: towers.diskW,
-    nodeR: Math.max(0.35, Math.min(6.5, minEdge * 0.34)),
-    hitR: Math.max(10, Math.min(22, minEdge * 0.55)),
+    nodeR: Math.max(0.35, Math.min(6.5, edgeLength * 0.34)),
+    hitR: Math.max(10, Math.min(22, edgeLength * 0.55)),
   };
 }
 
@@ -233,16 +229,10 @@ function applyView(context: CanvasRenderingContext2D, focus: Point, view: View):
 
 function drawGraph(context: CanvasRenderingContext2D, width: number, layout: Layout, scene: Scene, view: View): void {
   const seen = visibleWorld(width, layout, view);
-  const hairline = 1 / view.zoom;
-  context.lineWidth = hairline;
-  context.strokeStyle = 'rgba(236, 232, 225, 0.16)';
+  context.lineWidth = 1 / view.zoom;
+  context.strokeStyle = 'rgba(186, 182, 174, 0.55)';
   context.beginPath();
-  for (const [from, to] of layout.edges) {
-    const a = layout.points[from]!;
-    const b = layout.points[to]!;
-    if (misses(a, b, seen)) continue;
-    line(context, a, b);
-  }
+  drawCopy(context, layout.corners, scene.disks - 1, view.zoom, seen);
   context.stroke();
 
   const walking = pathStates(scene);
@@ -280,20 +270,90 @@ function drawGraph(context: CanvasRenderingContext2D, width: number, layout: Lay
   const next = scene.move ? layout.points[moveDisk(scene.state, scene.move.disk, scene.move.to)] : null;
   const ringWidth = 1.5 / view.zoom;
   const hereR = shownRadius(layout, view, false);
-  if (here && next && scene.move && !scene.reducedMotion) {
-    const t = smooth(scene.alpha);
-    ring(context, lerp(here.x, next.x, t), lerp(here.y, next.y, t), hereR + 3.5 / view.zoom, '#f4efe6', ringWidth);
-  } else if (here) {
-    ring(context, here.x, here.y, hereR + 3.5 / view.zoom, '#f4efe6', ringWidth);
+  if (here) {
+    const t = here && next && scene.move && !scene.reducedMotion ? smooth(scene.alpha) : 0;
+    const x = next ? lerp(here.x, next.x, t) : here.x;
+    const y = next ? lerp(here.y, next.y, t) : here.y;
+    // The corner dots already mark a solved tower. Anywhere else, the dot is the only fill.
+    if (scene.move || solvedPeg(scene.state, scene.disks) < 0) fillDot(context, { x, y }, hereR, '#f4efe6');
+    drawHereRipple(context, x, y, hereR, view.zoom, ringWidth, scene.reducedMotion);
   }
   if (scene.goal !== null && scene.goal !== scene.state) {
     const goal = layout.points[scene.goal];
-    if (goal) ring(context, goal.x, goal.y, hereR + 5.5 / view.zoom, PEG_COLOR[0], ringWidth);
+    if (goal) ring(context, goal.x, goal.y, hereR + 5.5 / view.zoom, '#d5dbe6', ringWidth);
   }
   if (scene.hover >= 0 && scene.hover !== scene.state) {
     const hover = layout.points[scene.hover];
     const peg = solvedPeg(scene.hover, scene.disks);
     if (hover) ring(context, hover.x, hover.y, markerRadius(layout, view, peg >= 0) + 2.5 / view.zoom, 'rgba(244, 239, 230, 0.7)', ringWidth);
+  }
+}
+
+/**
+ * Draw this copy of the graph. A straight side is many equal steps laid end to end,
+ * so the outline is one line, not a row of short ones. Below a few pixels the inside
+ * would only gray the hole, so the outline stands in for it. The walk is drawn later.
+ */
+function drawCopy(
+  context: CanvasRenderingContext2D,
+  corners: readonly [Point, Point, Point],
+  disk: number,
+  zoom: number,
+  seen: { x0: number; y0: number; x1: number; y1: number },
+): void {
+  if (triangleMisses(corners, seen)) return;
+  const span = Math.hypot(corners[1]!.x - corners[0]!.x, corners[1]!.y - corners[0]!.y);
+  if (disk <= 0 || span * zoom < 8) {
+    line(context, corners[0]!, corners[1]!);
+    line(context, corners[1]!, corners[2]!);
+    line(context, corners[2]!, corners[0]!);
+    return;
+  }
+  for (let a = 0; a < 3; a += 1) {
+    for (let b = a + 1; b < 3; b += 1) {
+      const [from, to] = bridgeOf(disk, a, b, corners);
+      line(context, from, to);
+    }
+  }
+  for (let peg = 0; peg < 3; peg += 1) drawCopy(context, copyCorners(peg, disk, corners), disk - 1, zoom, seen);
+}
+
+function triangleMisses(corners: readonly [Point, Point, Point], box: { x0: number; y0: number; x1: number; y1: number }): boolean {
+  let minX = corners[0]!.x;
+  let maxX = minX;
+  let minY = corners[0]!.y;
+  let maxY = minY;
+  for (let index = 1; index < 3; index += 1) {
+    const point = corners[index]!;
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.y > maxY) maxY = point.y;
+  }
+  return maxX < box.x0 || minX > box.x1 || maxY < box.y0 || minY > box.y1;
+}
+
+/** One ring leaves the dot and fades. The next is already on its way. Own clock, not the hop speed. */
+const RIPPLE_MS = 1600;
+
+function drawHereRipple(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  hereR: number,
+  zoom: number,
+  ringWidth: number,
+  reducedMotion: boolean,
+): void {
+  if (reducedMotion) {
+    ring(context, x, y, hereR + 4 / zoom, 'rgba(244, 239, 230, 0.85)', ringWidth);
+    return;
+  }
+  const now = performance.now();
+  for (const offset of [0, 0.5]) {
+    const phase = (now / RIPPLE_MS + offset) % 1;
+    const radius = hereR + (1.5 + phase * 14) / zoom;
+    ring(context, x, y, radius, `rgba(244, 239, 230, ${0.72 * (1 - phase)})`, ringWidth);
   }
 }
 
@@ -396,10 +456,6 @@ function visibleWorld(width: number, layout: Layout, view: View): { x0: number; 
     x1: Math.max(origin.x, far.x) + pad,
     y1: Math.max(origin.y, far.y) + pad,
   };
-}
-
-function misses(a: Point, b: Point, box: { x0: number; y0: number; x1: number; y1: number }): boolean {
-  return (a.x < box.x0 && b.x < box.x0) || (a.x > box.x1 && b.x > box.x1) || (a.y < box.y0 && b.y < box.y0) || (a.y > box.y1 && b.y > box.y1);
 }
 
 function drawFit(context: CanvasRenderingContext2D, box: Box): void {

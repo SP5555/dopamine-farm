@@ -4,4 +4,4 @@ The graph of the tower is a triangle. Each point is one way the disks can sit on
 
 Click a point and the disks hop along a shortest path to that arrangement. Stepping the biggest disk aside is sometimes shorter than moving it straight across. Hover a disk to see the arrangements reachable while every larger disk stays put. The bottom disk covers the whole triangle. The top disk covers the smallest one.
 
-The picture draws the lines, the three corners, and the point under the cursor. Scroll to zoom the triangle, and drag to look around. The towers stay where they are. Height is the number of disks. Opening the sim, or changing the height, starts from a random arrangement.
+The picture draws the lines, the three corners, and the point under the cursor. Finer moves appear as you look closer. Scroll to zoom the triangle, and drag to look around. The towers stay where they are. Height is the number of disks. Opening the sim, or changing the height, starts from a random arrangement.
