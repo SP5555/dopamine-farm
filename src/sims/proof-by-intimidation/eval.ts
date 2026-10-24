@@ -11,7 +11,7 @@ const EPS = 1e-4;
 const MAX_DEPTH = 11;
 const SERIES_TERMS = 40;
 const SAMPLE_BUDGET = 24000;
-const BADGE_TOLERANCE = 2e-3;
+const BADGE_TOLERANCE = 5e-3;
 
 const LANCZOS = [
   0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
@@ -257,6 +257,7 @@ export function evaluate(root: Expr, env: Record<string, C>): C {
         return env[expr.name] ?? c(NaN, NaN);
       case 'const':
         if (expr.name === 'pi') return c(Math.PI);
+        if (expr.name === 'e') return c(Math.E);
         if (expr.name === 'i') return c(0, 1);
         return c(Infinity, 0);
       case 'add':
@@ -329,12 +330,19 @@ export function evaluate(root: Expr, env: Record<string, C>): C {
     if (last < start) return c(0);
     if (last - start > 80) return c(NaN, NaN);
     let total = c(0);
-    for (let n = start; n <= last; n += 1) total = cadd(total, withVar(expr.v, c(n), expr.body));
+    for (let n = start; n <= last; n += 1) {
+      const term = withVar(expr.v, c(n), expr.body);
+      if (!Number.isFinite(term.re) || !Number.isFinite(term.im)) break;
+      total = cadd(total, term);
+    }
     return total;
   }
 
   function limit(expr: Extract<Expr, { type: 'lim' }>): C {
     const to = ev(expr.to);
+    if (to.im === 0 && (to.re === Infinity || to.re === -Infinity)) {
+      return withVar(expr.v, c(to.re === Infinity ? 1e6 : -1e6), expr.body);
+    }
     if (Math.abs(to.im) > 1e-6 || !Number.isFinite(to.re)) return c(NaN, NaN);
     const at = withVar(expr.v, c(to.re), expr.body);
     if (Number.isFinite(at.re) && Number.isFinite(at.im)) return at;

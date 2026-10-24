@@ -1,5 +1,5 @@
 export type FnName = 'sin' | 'cos' | 'sinh' | 'cosh' | 'ln' | 'exp' | 'gamma';
-export type ConstName = 'pi' | 'i' | 'inf';
+export type ConstName = 'pi' | 'e' | 'i' | 'inf';
 
 export type Expr =
   | { id: string; type: 'num'; value: number }
@@ -274,6 +274,99 @@ export function clone(expr: Expr): Expr {
   return JSON.parse(JSON.stringify(expr)) as Expr;
 }
 
+/** A second copy for a rule that uses a subexpression twice. Bound names are freshened so the two copies do not share a binder. */
+export function duplicate(expr: Expr, gen: Gen): Expr {
+  const copy = clone(expr);
+  reidentify(copy, gen, []);
+  return copy;
+}
+
+function reidentify(expr: Expr, gen: Gen, stack: { from: string; to: string }[]): void {
+  expr.id = freshId(gen);
+  let pushed = false;
+  if (expr.type === 'integral' || expr.type === 'sum' || expr.type === 'lim' || expr.type === 'deriv') {
+    const stem = expr.v.split('_')[0] || 't';
+    const to = freshName(gen, stem);
+    stack.push({ from: expr.v, to });
+    expr.v = to;
+    pushed = true;
+  } else if (expr.type === 'var' && expr.bound) {
+    for (let i = stack.length - 1; i >= 0; i -= 1) {
+      const entry = stack[i];
+      if (entry && entry.from === expr.name) {
+        expr.name = entry.to;
+        break;
+      }
+    }
+  }
+  for (const child of children(expr)) reidentify(child, gen, stack);
+  if (pushed) stack.pop();
+}
+
+/** Same formula, ignoring ids. Binders may have been renamed in a copy. */
+export function sameShape(a: Expr, b: Expr): boolean {
+  return equivalent(a, b, new Map());
+}
+
+function equivalent(a: Expr, b: Expr, env: Map<string, string>): boolean {
+  if (a.type !== b.type) return false;
+  switch (a.type) {
+    case 'num':
+      return b.type === 'num' && a.value === b.value;
+    case 'const':
+      return b.type === 'const' && a.name === b.name;
+    case 'var': {
+      if (b.type !== 'var' || a.bound !== b.bound) return false;
+      if (!a.bound) return a.name === b.name;
+      // A binder inside these two trees was renamed in a copy. A name from outside them is shared.
+      return (env.get(a.name) ?? a.name) === b.name;
+    }
+    case 'add':
+    case 'mul':
+      return b.type === a.type && a.args.length === b.args.length && a.args.every((arg, index) => equivalent(arg, b.args[index]!, env));
+    case 'neg':
+      return b.type === 'neg' && equivalent(a.arg, b.arg, env);
+    case 'fact':
+      return b.type === 'fact' && equivalent(a.arg, b.arg, env);
+    case 'fn':
+      return b.type === 'fn' && a.name === b.name && equivalent(a.arg, b.arg, env);
+    case 'div':
+      return b.type === 'div' && equivalent(a.num, b.num, env) && equivalent(a.den, b.den, env);
+    case 'pow':
+      return b.type === 'pow' && equivalent(a.base, b.base, env) && equivalent(a.exp, b.exp, env);
+    case 'integral':
+    case 'sum': {
+      if ((b.type !== 'integral' && b.type !== 'sum') || a.type !== b.type) return false;
+      if (!equivalent(a.lo, b.lo, env) || !equivalent(a.hi, b.hi, env)) return false;
+      const next = new Map(env);
+      next.set(a.v, b.v);
+      return equivalent(a.body, b.body, next);
+    }
+    case 'lim': {
+      if (b.type !== 'lim' || !equivalent(a.to, b.to, env)) return false;
+      const next = new Map(env);
+      next.set(a.v, b.v);
+      return equivalent(a.body, b.body, next);
+    }
+    case 'deriv': {
+      if (b.type !== 'deriv') return false;
+      const next = new Map(env);
+      next.set(a.v, b.v);
+      return equivalent(a.body, b.body, next);
+    }
+    case 'det':
+      return (
+        b.type === 'det' &&
+        equivalent(a.a, b.a, env) &&
+        equivalent(a.b, b.b, env) &&
+        equivalent(a.c, b.c, env) &&
+        equivalent(a.d, b.d, env)
+      );
+    case 'binom':
+      return b.type === 'binom' && equivalent(a.n, b.n, env) && equivalent(a.k, b.k, env);
+  }
+}
+
 export function isReal(expr: Expr): boolean {
   let real = true;
   walk(expr, (node) => {
@@ -333,11 +426,6 @@ export function tally(expr: Expr): { nodes: number; integrals: number; sums: num
   return { nodes, integrals, sums, free: free.size };
 }
 
-export function introducedIds(expr: Expr, hole: Expr | null): string[] {
-  const skip = new Set(hole ? idsOf(hole) : []);
-  return idsOf(expr).filter((id) => !skip.has(id));
-}
-
 function precedence(expr: Expr): number {
   switch (expr.type) {
     case 'add':
@@ -370,6 +458,7 @@ function raw(expr: Expr): string {
       return expr.name;
     case 'const':
       if (expr.name === 'pi') return '\\pi';
+      if (expr.name === 'e') return 'e';
       if (expr.name === 'i') return 'i';
       return '\\infty';
     case 'add':

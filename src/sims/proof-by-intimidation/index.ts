@@ -1,6 +1,6 @@
-import type { ParamSchema, Params, SimModule, SimStatus } from '../../harness/author';
+import { randomSeed, type ParamSchema, type Params, type SimModule, type SimStatus } from '../../harness/author';
 import { tally, latex } from './expr';
-import { armObfuscate, armSolve, atSize, canSolve, commit, startRun, type Rewrite, type Run } from './engine';
+import { armObfuscate, armSolve, atSize, canSolve, commit, isStart, startRun, type Rewrite, type Run, type StartName } from './engine';
 import { proveValue, type Verdict } from './eval';
 import type { Flavor } from './rules';
 import { mountProof } from './view';
@@ -22,14 +22,19 @@ export const params: ParamSchema = {
     options: [
       { value: '1', label: '1' },
       { value: '0', label: '0' },
+      { value: '2', label: '2' },
+      { value: 'e', label: 'e' },
+      { value: 'pi', label: 'π' },
+      { value: 'ln2', label: 'ln 2' },
+      { value: 'half', label: '1/2' },
     ],
   },
   size: {
     type: 'number',
     label: 'Size',
-    default: 120,
+    default: 100,
     min: 40,
-    max: 120,
+    max: 100,
     step: 20,
     reset: true,
     group: 'Proof',
@@ -52,15 +57,16 @@ export const params: ParamSchema = {
 };
 
 export function normalize(params: Params): void {
-  params.size = clampInt(params.size, 40, 120, 120);
-  if (params.start === 'zero' || params.start === '0') params.start = '0';
-  else params.start = '1';
+  params.size = clampInt(params.size, 40, 100, 100);
+  if (params.start === 'zero') params.start = '0';
+  if (!isStart(params.start)) params.start = '1';
   if (!isFlavor(params.flavor)) params.flavor = 'all';
 }
 
 export const sim: SimModule = {
   params,
   normalize,
+  chrome: { seed: false },
   create(ctx, host) {
     host.setSpeed(OPEN_SPEED);
     const card = host.card({ caption: 'Tree' });
@@ -69,7 +75,7 @@ export const sim: SimModule = {
     let width = ctx.width;
     let height = ctx.height;
     let dpr = ctx.dpr;
-    let run: Run = startRun(1, 1, 120, 'all');
+    let run: Run = startRun(1, '1', 100, 'all');
     let drive: Drive = 'idle';
     let queued = false;
     let badgeKey = '';
@@ -127,11 +133,11 @@ export const sim: SimModule = {
     }
 
     return {
-      reset(next, seed = 1) {
+      reset(next) {
         badgeKey = '';
         drive = 'idle';
         queued = false;
-        run = startRun(seed, next.start === '0' ? 0 : 1, clampInt(next.size, 40, 120, 120), flavorOf(next.flavor));
+        run = startRun(randomSeed(), startOf(next.start), clampInt(next.size, 40, 100, 100), flavorOf(next.flavor));
         host.setPaused(true);
       },
       step() {
@@ -255,11 +261,7 @@ export const sim: SimModule = {
 };
 
 function focusOf(pending: Rewrite, swapping: boolean): string[] {
-  if (swapping) {
-    const arrived = pending.mode === 'expand' ? pending.step.rootId : pending.retargetTo;
-    return arrived ? [arrived] : [];
-  }
-  return pending.mode === 'expand' ? pending.highlight : [pending.step.rootId];
+  return [swapping ? pending.arrived : pending.focus];
 }
 
 function modeOf(drive: Drive): 'simplify' | 'expand' | null {
@@ -276,6 +278,10 @@ function phaseLabel(drive: Drive): string {
   if (drive === 'obfuscate-once' || drive === 'obfuscate-all') return 'Obfuscating…';
   if (drive === 'solve-once' || drive === 'solve-all') return 'Solving…';
   return 'Ready';
+}
+
+function startOf(value: Params[string]): StartName {
+  return isStart(value) ? value : '1';
 }
 
 function flavorOf(value: Params[string]): Flavor {
