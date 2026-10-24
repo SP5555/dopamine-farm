@@ -14,6 +14,7 @@ import type { ParamSchema, Params, SimHost, SimInstance, SimMeta, SimStatus, Wor
 
 const ROUTE_DELAY_MS = 100;
 const RESTART_DELAY_MS = 2500;
+const NAV_COLLAPSED_KEY = 'dopamine-farm.nav-collapsed';
 
 interface Mounted {
   id: string;
@@ -35,19 +36,23 @@ export function createApp(root: HTMLElement): App {
   root.replaceChildren();
   root.innerHTML = `
     <div class="app">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark" aria-hidden="true"></div>
-          <div>
-            <h1>Dopamine Farm</h1>
-            <p>Idle simulations</p>
+      <aside class="sidebar" id="sim-list">
+        <div class="sidebar-inner">
+          <div class="brand">
+            <div class="brand-mark" aria-hidden="true"></div>
+            <div class="brand-copy">
+              <h1>Dopamine Farm</h1>
+              <p>Idle simulations</p>
+            </div>
+            <button type="button" class="nav-toggle" aria-controls="sim-list" aria-expanded="true" aria-label="Hide the simulation list"></button>
           </div>
+          <nav class="nav" aria-label="Simulations"></nav>
         </div>
-        <nav class="nav" aria-label="Simulations"></nav>
       </aside>
       <section class="stage">
         <header class="bar-top">
           <div class="bar-top-main">
+            <button type="button" class="nav-toggle nav-show" aria-controls="sim-list" aria-expanded="false" aria-label="Show the simulation list"></button>
             <h2 class="sim-title">Dopamine Farm</h2>
             <div class="bar-pieces"></div>
             <span class="bar-seed" hidden></span>
@@ -65,6 +70,10 @@ export function createApp(root: HTMLElement): App {
     </div>
   `;
 
+  const shell = required(root, '.app');
+  const sidebar = required(root, '.sidebar');
+  const hideNav = required(root, '.sidebar .nav-toggle');
+  const showNav = required(root, '.bar-top .nav-toggle');
   const navRoot = required(root, '.nav');
   const title = required(root, '.sim-title');
   const piecesRoot = required(root, '.bar-top .bar-pieces');
@@ -90,10 +99,20 @@ export function createApp(root: HTMLElement): App {
   let routeTimer = 0;
   let restartTimer = 0;
   let lastRoute = '';
+  let navFocus: HTMLElement | null = null;
 
   const nav = createNav(navRoot, metas, (id) => {
     void mount(id, null, {}, true);
   });
+  hideNav.addEventListener('click', () => setNavCollapsed(true));
+  showNav.addEventListener('click', () => setNavCollapsed(false));
+  sidebar.addEventListener('transitionend', (event) => {
+    if (event.target !== sidebar || event.propertyName !== 'width') return;
+    const target = navFocus;
+    navFocus = null;
+    target?.focus();
+  });
+  setNavCollapsed(readNavCollapsed(), false, false);
   const statusBar = createStatusBar(statusRoot, banner);
   const topBar = createBar(piecesRoot);
   let autoOn = false;
@@ -235,6 +254,34 @@ export function createApp(root: HTMLElement): App {
     },
   };
 
+  function setNavCollapsed(collapsed: boolean, focus = true, animate = true): void {
+    if (!animate) shell.classList.add('is-nav-instant');
+    shell.classList.toggle('is-nav-collapsed', collapsed);
+    if (!animate) {
+      shell.getBoundingClientRect();
+      shell.classList.remove('is-nav-instant');
+    }
+    const expanded = String(!collapsed);
+    hideNav.setAttribute('aria-expanded', expanded);
+    showNav.setAttribute('aria-expanded', expanded);
+    showNav.tabIndex = collapsed ? 0 : -1;
+    if (collapsed) showNav.removeAttribute('aria-hidden');
+    else showNav.setAttribute('aria-hidden', 'true');
+    sidebar.inert = collapsed;
+    if (collapsed) sidebar.setAttribute('aria-hidden', 'true');
+    else sidebar.removeAttribute('aria-hidden');
+    try {
+      localStorage.setItem(NAV_COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch {
+      // Private browsing can reject storage. The list still opens and closes for this visit.
+    }
+    if (!focus) return;
+    const target = collapsed ? showNav : hideNav;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!animate || reduce) target.focus();
+    else navFocus = target;
+  }
+
   async function mount(
     id: string,
     nextSeed: number | null,
@@ -288,8 +335,10 @@ export function createApp(root: HTMLElement): App {
     const resize = () => {
       const next = measure(canvasHost);
       if (next.width < 2 || next.height < 2) return;
-      applyCanvasSize(canvas, next.width, next.height, next.dpr);
+      const cleared = applyCanvasSize(canvas, next.width, next.height, next.dpr);
       instance.resize?.(next.width, next.height, next.dpr);
+      // The width change above wipes the bitmap, and it happens after this frame's draw.
+      if (cleared) loop.redraw();
     };
     const observer = new ResizeObserver(() => resize());
     observer.observe(canvasHost);
@@ -548,13 +597,29 @@ function measure(host: HTMLElement): { width: number; height: number; dpr: numbe
   };
 }
 
-function applyCanvasSize(canvas: HTMLCanvasElement, width: number, height: number, dpr: number): void {
+function applyCanvasSize(canvas: HTMLCanvasElement, width: number, height: number, dpr: number): boolean {
   const bufferWidth = Math.max(1, Math.floor(width * dpr));
   const bufferHeight = Math.max(1, Math.floor(height * dpr));
-  if (canvas.width !== bufferWidth) canvas.width = bufferWidth;
-  if (canvas.height !== bufferHeight) canvas.height = bufferHeight;
+  let cleared = false;
+  if (canvas.width !== bufferWidth) {
+    canvas.width = bufferWidth;
+    cleared = true;
+  }
+  if (canvas.height !== bufferHeight) {
+    canvas.height = bufferHeight;
+    cleared = true;
+  }
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
+  return cleared;
+}
+
+function readNavCollapsed(): boolean {
+  try {
+    return localStorage.getItem(NAV_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {

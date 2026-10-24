@@ -35,6 +35,8 @@ export interface Loop {
   readonly paused: boolean;
   readonly speed: number;
   requestStep(): void;
+  /** Draw the frame already on screen again. A canvas resize clears the bitmap. */
+  redraw(): void;
   onFrame(listener: (info: FrameInfo) => void): () => void;
 }
 
@@ -48,6 +50,7 @@ export function createLoop(hooks: LoopHooks): Loop {
   let accumulator = 0;
   let last = 0;
   let pendingSteps = 0;
+  let alpha = 0;
   const listeners = new Set<(info: FrameInfo) => void>();
 
   const burst = (): number => {
@@ -183,7 +186,7 @@ export function createLoop(hooks: LoopHooks): Loop {
     }
 
     const status = hooks.getStatus();
-    const alpha = snap || status.done ? 0 : Math.min(1, accumulator / eventSpan(status));
+    alpha = snap || status.done ? 0 : Math.min(1, accumulator / eventSpan(status));
     hooks.render(alpha);
     for (const listener of listeners) listener({ steps, status });
   };
@@ -240,6 +243,9 @@ export function createLoop(hooks: LoopHooks): Loop {
     },
     requestStep() {
       pendingSteps += 1;
+    },
+    redraw() {
+      hooks.render(alpha);
     },
     onFrame(listener: (info: FrameInfo) => void) {
       listeners.add(listener);
