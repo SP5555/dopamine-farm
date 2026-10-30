@@ -94,6 +94,34 @@ export function randomRule(rng: Rng): number {
   return Math.round((rng.next() * 2 - 1) * 0.2 * 100) / 100;
 }
 
+/** How `row` feels about `column`. A color never attracts itself: a positive same-color roll is stored as its negative. */
+export function ruleFor(rng: Rng, row: number, column: number): number {
+  const value = randomRule(rng);
+  if (row === column && value > 0) return -value;
+  return value;
+}
+
+/**
+ * A new value for one cell. One roll, as in `ruleFor`.
+ * If that roll is the value already there, one draw picks a different hundredth. No further rolls.
+ */
+export function nextRule(rng: Rng, current: number, sameColor: boolean): number {
+  const rolled = ruleFor(rng, 0, sameColor ? 0 : 1);
+  if (Math.round(rolled * 100) !== Math.round(current * 100)) return rolled;
+  return differentHundredth(rng, Math.round(current * 100), sameColor);
+}
+
+/** One draw from the legal hundredths, with `step` left out when it is one of them. */
+function differentHundredth(rng: Rng, step: number, sameColor: boolean): number {
+  const min = -20;
+  const max = sameColor ? 0 : 20;
+  const span = max - min + 1;
+  const inside = step >= min && step <= max;
+  let pick = rng.int(inside ? span - 1 : span);
+  if (inside && pick >= step - min) pick += 1;
+  return (min + pick) / 100;
+}
+
 /** Curated entries are copied into the top-left block. Extra rows and columns stay 0. Random fills from `rng`, which must not be the position stream. */
 export function writeMatrix(preset: Preset, species: number, rng: Rng, into: Float32Array): void {
   if (preset.matrix) {

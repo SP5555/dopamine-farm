@@ -14,7 +14,7 @@ import {
 } from './physics';
 import { ParticleGpu } from './gpu';
 import { createMatrixEditor, type MatrixEditor } from './matrix-editor';
-import { PRESETS, permuteBehaviors, presetById, randomRule, writeMatrix, type Preset } from './presets';
+import { PRESETS, nextRule, permuteBehaviors, presetById, ruleFor, writeMatrix, type Preset } from './presets';
 import { drawLife, speciesPalette, trailCover, type Rgb } from './render';
 
 /** CPU neighbor search gets heavy past this. WebGPU runs the full count. */
@@ -335,8 +335,12 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
 
   function randomize(): void {
     const rng = createRng(randomSeed());
-    const count = world.species * world.species;
-    for (let index = 0; index < count; index += 1) world.matrix[index] = randomRule(rng);
+    const species = world.species;
+    for (let row = 0; row < species; row += 1) {
+      for (let column = 0; column < species; column += 1) {
+        world.matrix[row * species + column] = ruleFor(rng, row, column);
+      }
+    }
     custom = true;
     editor?.sync(world.matrix, world.species, colors);
     gpu?.writeRules(world.matrix, world.species);
@@ -344,9 +348,11 @@ function create(ctx: SimContext, host: SimHost): SimInstance<Params> {
 
   function mutate(): void {
     const rng = createRng(randomSeed());
-    const count = world.species * world.species;
-    const index = rng.int(count);
-    world.matrix[index] = randomRule(rng);
+    const species = world.species;
+    const index = rng.int(species * species);
+    const row = Math.floor(index / species);
+    const column = index - row * species;
+    world.matrix[index] = nextRule(rng, world.matrix[index] ?? 0, row === column);
     custom = true;
     editor?.sync(world.matrix, world.species, colors);
     gpu?.writeRules(world.matrix, world.species);

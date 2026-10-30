@@ -15,7 +15,7 @@ import {
   stepWorld,
   wrap01,
 } from './physics';
-import { PRESETS, permuteBehaviors, writeMatrix } from './presets';
+import { PRESETS, nextRule, permuteBehaviors, ruleFor, writeMatrix } from './presets';
 
 describe('particle life', () => {
   it('gives a new species an equal share of the existing particles', () => {
@@ -105,6 +105,47 @@ describe('particle life', () => {
     }
     expect(zeros).toBeGreaterThan(200);
     expect(zeros).toBeLessThan(440);
+  });
+
+  it('keeps a same-color roll at zero or below', () => {
+    let selfNegative = 0;
+    let otherPositive = 0;
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const rng = createRng(seed);
+      for (let row = 0; row < 4; row += 1) {
+        for (let column = 0; column < 4; column += 1) {
+          const value = ruleFor(rng, row, column);
+          expect(value).toBeGreaterThanOrEqual(-0.2);
+          expect(value).toBeLessThanOrEqual(0.2);
+          if (row === column) {
+            expect(value).toBeLessThanOrEqual(0);
+            if (value < 0) selfNegative += 1;
+          } else if (value > 0) {
+            otherPositive += 1;
+          }
+        }
+      }
+    }
+    expect(selfNegative).toBeGreaterThan(20);
+    expect(otherPositive).toBeGreaterThan(20);
+  });
+
+  it('changes the cell it mutates, and keeps a same-color cell non-positive', () => {
+    const currents = [0, -0.2, 0.2, 0.05, -0.01];
+    for (const sameColor of [false, true]) {
+      const seen = new Set<number>();
+      for (let seed = 1; seed <= 80; seed += 1) {
+        const rng = createRng(seed);
+        for (const current of currents) {
+          const value = nextRule(rng, current, sameColor);
+          expect(Math.round(value * 100)).not.toBe(Math.round(current * 100));
+          expect(value).toBeGreaterThanOrEqual(-0.2);
+          expect(value).toBeLessThanOrEqual(sameColor ? 0 : 0.2);
+          seen.add(Math.round(value * 100));
+        }
+      }
+      expect(seen.size).toBeGreaterThan(8);
+    }
   });
 
   it('moves each species behavior onto another species', () => {
